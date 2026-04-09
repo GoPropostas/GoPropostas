@@ -4,9 +4,9 @@ from fpdf import FPDF
 import io
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Sistema Frei Galvão", layout="wide")
+st.set_page_config(page_title="Sistema de Propostas - Loteamentos", layout="wide")
 
-# Inicialização do banco de dados temporário
+# Inicializa o armazenamento na sessão para não perder os dados ao navegar
 if 'loteamentos' not in st.session_state:
     st.session_state['loteamentos'] = {}
 
@@ -15,123 +15,127 @@ def gerar_pdf(dados):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    
-    # Cabeçalho
-    pdf.cell(200, 10, "PROPOSTA DE COMPRA - RESIDENCIAL FREI GALVÃO", ln=True, align='C')
+    pdf.cell(200, 10, "PROPOSTA DE COMPRA E VENDA", ln=True, align='C')
     pdf.ln(10)
     
-    # Dados do Cliente
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "DADOS DO PROPONENTE", ln=True)
+    pdf.cell(0, 10, "1. DADOS DO CLIENTE", ln=True)
     pdf.set_font("Arial", size=11)
     pdf.cell(0, 8, f"Nome: {dados['nome'].upper()}", ln=True)
     pdf.cell(0, 8, f"CPF: {dados['cpf']}", ln=True)
-    pdf.ln(5)
     
-    # Dados do Imóvel
+    pdf.ln(5)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "IDENTIFICAÇÃO DO BEM", ln=True)
+    pdf.cell(0, 10, "2. DADOS DO IMÓVEL", ln=True)
     pdf.set_font("Arial", size=11)
+    pdf.cell(0, 8, f"Loteamento: {dados['loteamento']}", ln=True)
     pdf.cell(0, 8, f"Unidade: {dados['unidade']}", ln=True)
     pdf.cell(0, 8, f"Valor Total: R$ {dados['valor_total']:,.2f}", ln=True)
-    pdf.ln(5)
-    
-    # Condições de Pagamento
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "CONDIÇÕES DE PAGAMENTO", ln=True)
-    pdf.set_font("Arial", size=11)
-    pdf.cell(0, 8, f"Entrada (Ato + Intermed.): R$ {dados['entrada_total']:,.2f}", ln=True)
-    pdf.cell(0, 8, f"Parcelamento: 36x de R$ {dados['v_parcela_36']:,.2f}", ln=True)
-    pdf.cell(0, 8, f"Saldo Residual após 36 meses: R$ {dados['saldo_residual']:,.2f}", ln=True)
     
     pdf.ln(10)
-    pdf.set_font("Arial", 'I', 9)
-    obs = ("Nota: As primeiras 36 parcelas possuem apenas correção de IPCA. "
-           "O saldo devedor remanescente poderá ser quitado ou financiado em até 204 meses "
-           "com juros de 0,7% a.m. + IPCA direto com o empreendedor.")
-    pdf.multi_cell(0, 5, obs)
+    pdf.set_font("Arial", 'I', 10)
+    obs = "Esta proposta está sujeita a análise de crédito e disponibilidade de estoque."
+    pdf.multi_cell(0, 10, obs)
     
-    # Gera o PDF em memória para o Streamlit baixar
     return pdf.output(dest='S').encode('latin-1')
 
-# --- INTERFACE ---
-st.sidebar.title("Menu Principal")
-aba = st.sidebar.radio("Ir para:", ["Corretor (Vendas)", "Admin (Upload de Tabela)"])
+# --- MENU LATERAL ---
+st.sidebar.title("Navegação")
+aba = st.sidebar.radio("Selecione o acesso:", ["Corretor (Vendas)", "Moderador (Admin)"])
 
-# --- ABA ADMIN ---
-if aba == "Admin (Upload de Tabela)":
-    st.header("⚙️ Configurações do Sistema")
-    senha = st.text_input("Senha de Moderador", type="password")
+# --- MÓDULO MODERADOR (ADMIN) ---
+if aba == "Moderador (Admin)":
+    st.header("⚙️ Painel de Controle")
+    senha = st.text_input("Digite a senha de administrador", type="password")
     
     if senha == "admin123":
-        st.success("Acesso Liberado!")
-        nome_loteamento = st.text_input("Nome do Loteamento (ex: Frei Galvão)")
-        arquivo_excel = st.file_uploader("Suba a planilha do Excel (.xlsx)", type=['xlsx'])
+        st.success("Acesso autorizado.")
+        nome_empreendimento = st.text_input("Nome do Loteamento (Ex: Residencial Frei Galvão)")
+        arquivo_excel = st.file_uploader("Suba a planilha de lotes (Excel)", type=['xlsx'])
         
-        if arquivo_excel and nome_loteamento:
-            df = pd.read_excel(arquivo_excel)
-            st.session_state['loteamentos'][nome_loteamento] = df
-            st.success(f"Tabela {nome_loteamento} ativa com sucesso!")
-            st.dataframe(df.head())
+        if arquivo_excel and nome_empreendimento:
+            try:
+                # Lê o excel tentando pular linhas vazias automagicamente
+                df = pd.read_excel(arquivo_excel)
+                
+                # LIMPEZA: Remove colunas e linhas totalmente vazias
+                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+                
+                # Se os nomes das colunas forem "Unnamed", tenta usar a primeira linha de dados como cabeçalho
+                if "Unnamed" in str(df.columns):
+                    df.columns = df.iloc[0]
+                    df = df[1:]
+                
+                # Resetar o índice
+                df = df.reset_index(drop=True)
+                
+                st.session_state['loteamentos'][nome_empreendimento] = df
+                st.success(f"Tabela '{nome_empreendimento}' carregada com sucesso!")
+                
+                st.write("### Prévia da Tabela Carregada:")
+                st.dataframe(df.head(10))
+                
+            except Exception as e:
+                st.error(f"Erro ao processar o Excel: {e}")
 
-# --- ABA CORRETOR ---
+# --- MÓDULO CORRETOR (VENDAS) ---
 else:
-    st.header("📝 Nova Proposta de Venda")
+    st.header("📝 Gerador de Propostas")
     
     if not st.session_state['loteamentos']:
-        st.warning("⚠️ O Moderador precisa subir uma tabela no Painel Admin antes de começar.")
+        st.warning("Nenhuma tabela disponível. O Moderador precisa subir os dados no Painel Admin.")
     else:
-        lote_ref = st.selectbox("Selecione o Empreendimento", list(st.session_state['loteamentos'].keys()))
-        tabela = st.session_state['loteamentos'][lote_ref]
+        # Seleção do Loteamento
+        loteamento_sel = st.selectbox("Escolha o Loteamento", list(st.session_state['loteamentos'].keys()))
+        tabela_ativa = st.session_state['loteamentos'][loteamento_sel]
+        
+        # Identificação automática das colunas por posição (mais seguro que por nome)
+        cols = tabela_ativa.columns.tolist()
         
         col1, col2 = st.columns(2)
         with col1:
-            nome_cli = st.text_input("Nome do Cliente")
-            cpf_cli = st.text_input("CPF do Cliente")
-        
+            # Coluna 0 geralmente é a Unidade/Lote
+            unidade_escolhida = st.selectbox("Selecione o Lote/Unidade", tabela_ativa[cols[0]].unique())
+            dados_lote = tabela_ativa[tabela_ativa[cols[0]] == unidade_escolhida].iloc[0]
+            
         with col2:
-            # Seleciona a unidade baseada na planilha
-            unid_sel = st.selectbox("Selecione o Lote/Quadra", tabela['Unidade'].unique())
-            dados_lote = tabela[tabela['Unidade'] == unid_sel].iloc[0]
-            
-            # Puxa os valores da tabela
-            valor_venda = float(dados_lote['Valor Total R$'])
-            v_parcela_36 = float(dados_lote['36x'])
-            
-            st.metric("Valor do Imóvel", f"R$ {valor_venda:,.2f}")
+            # Tenta encontrar o valor. Se não souber o nome da coluna, mostra tudo que achou
+            st.info(f"Unidade selecionada: {unidade_escolhida}")
+            # Aqui você pode ajustar o índice conforme sua planilha (ex: cols[1] para preço)
+            try:
+                valor_total = float(str(dados_lote[cols[1]]).replace('R$', '').replace('.', '').replace(',', '.'))
+                st.metric("Preço de Tabela", f"R$ {valor_total:,.2f}")
+            except:
+                st.warning("Não foi possível calcular o valor automaticamente. Confira a tabela abaixo.")
+                valor_total = 0.0
 
-        # Cálculos de Entrada (1% ato + 5.3% comissão)
-        v_ato = valor_venda * 0.01
-        v_comissao = valor_venda * 0.053
-        ent_total = v_ato + v_comissao
-        saldo_pos_36 = valor_venda - ent_total - (v_parcela_36 * 36)
+        st.write("---")
+        st.subheader("Dados do Cliente")
+        c1, c2 = st.columns(2)
+        with c1:
+            nome_cli = st.text_input("Nome Completo")
+        with c2:
+            cpf_cli = st.text_input("CPF")
 
-        st.divider()
-        st.subheader("Resumo Financeiro")
-        c1, c2, c3 = st.columns(3)
-        c1.write(f"**Ato + Intermed.:** R$ {ent_total:,.2f}")
-        c2.write(f"**36 Parcelas de:** R$ {v_parcela_36:,.2f}")
-        c3.write(f"**Saldo após 36m:** R$ {saldo_pos_36:,.2f}")
-
-        if st.button("🚀 Gerar PDF"):
+        if st.button("✅ Gerar e Baixar Proposta"):
             if nome_cli and cpf_cli:
-                payload = {
+                pdf_info = {
                     'nome': nome_cli,
                     'cpf': cpf_cli,
-                    'unidade': unid_sel,
-                    'valor_total': valor_venda,
-                    'entrada_total': ent_total,
-                    'v_ato': v_ato,
-                    'v_intermed': v_comissao,
-                    'v_parcela_36': v_parcela_36,
-                    'saldo_residual': saldo_pos_36
+                    'loteamento': loteamento_sel,
+                    'unidade': unidade_escolhida,
+                    'valor_total': valor_total
                 }
-                pdf_output = gerar_pdf(payload)
+                pdf_final = gerar_pdf(pdf_info)
                 st.download_button(
-                    label="📥 Baixar Proposta Pronta",
-                    data=pdf_output,
-                    file_name=f"Proposta_{nome_cli}.pdf",
+                    label="📥 Clique aqui para Baixar PDF",
+                    data=pdf_final,
+                    file_name=f"Proposta_{unidade_escolhida}.pdf",
                     mime="application/pdf"
                 )
             else:
-                st.error("Preencha o nome e CPF do cliente!")
+                st.error("Por favor, preencha o Nome e o CPF do cliente.")
+
+        # Mostra os detalhes técnicos para o corretor conferir
+        with st.expander("Ver detalhes completos da unidade"):
+            st.write(dados_lote.to_dict())

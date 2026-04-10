@@ -7,6 +7,15 @@ from datetime import datetime
 
 st.set_page_config(layout="wide")
 
+# ---------------- EMPREENDIMENTOS ----------------
+empreendimentos = {
+    "Frei Galvão": {
+        "proprietario": "Frei Galvão empreendimentos imobiliários",
+        "nome": "Loteamento Frei Galvão",
+        "logradouro": "Avenida Fazenda Bananal"
+    }
+}
+
 # ---------------- LIMPEZA ----------------
 def limpar(valor):
     if pd.isna(valor): return 0.0
@@ -18,9 +27,10 @@ def limpar(valor):
         return 0.0
 
 def buscar(linha, nomes):
-    for n in nomes:
-        if n in linha.index:
-            return limpar(linha[n])
+    for col in linha.index:
+        for nome in nomes:
+            if nome.lower() in col.lower():
+                return limpar(linha[col])
     return 0.0
 
 # ---------------- PDF ----------------
@@ -58,7 +68,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["O8"] = d["renda"]
     ws["E9"] = d["email"]
 
-    # SEGUNDO PROPONENTE
+    # SEGUNDO
     ws["G11"] = d["nome2"]
     ws["D13"] = d["cpf2"]
     ws["J13"] = d["telefone2"]
@@ -80,7 +90,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    # TABELA
+    # TABELA PRINCIPAL
     ws["B24"] = 1
     ws["B25"] = 36
     ws["B26"] = 1
@@ -135,18 +145,24 @@ else:
     if st.session_state['df'] is None:
         st.warning("Envie a tabela primeiro")
     else:
+        # EMPREENDIMENTO
+        st.subheader("🏢 Empreendimento")
+        emp_nome = st.selectbox("Selecione o empreendimento", list(empreendimentos.keys()))
+        emp = empreendimentos[emp_nome]
+
         df = st.session_state['df']
         col = df.columns[0]
 
         unidade = st.selectbox("Lote", df[col].dropna().unique())
         linha = df[df[col] == unidade].iloc[0]
 
+        # VALORES
         valor_negocio = buscar(linha, ["valor negócio"])
-        entrada_imovel = buscar(linha, ["entrada imóvel"])
+        entrada_imovel = buscar(linha, ["entrada imovel"])
         intermed = buscar(linha, ["intermediação"])
         parcela_36 = buscar(linha, ["36x"])
         saldo = buscar(linha, ["saldo"])
-        area = buscar(linha, ["area"])
+        area = buscar(linha, ["área", "area"])
         valor_imovel = buscar(linha, ["valor imóvel"])
 
         entrada_total = intermed + entrada_imovel
@@ -205,9 +221,9 @@ else:
                     "estado_civil2": "",
                     "renda2": "",
 
-                    "proprietario": "HOME BUY",
-                    "empreendimento": "EMPREENDIMENTO",
-                    "logradouro": "ENDEREÇO",
+                    "proprietario": emp["proprietario"],
+                    "empreendimento": emp["nome"],
+                    "logradouro": emp["logradouro"],
                     "unidade": unidade,
                     "area": area,
 
@@ -242,10 +258,10 @@ else:
                             mime="application/pdf"
                         )
 
-                    st.success("✅ Proposta gerada com sucesso!")
+                    st.success("✅ Proposta gerada!")
 
                 else:
-                    st.error("❌ PDF não foi gerado.")
+                    st.error("❌ PDF não foi gerado")
 
             except Exception as e:
                 st.error(f"Erro: {e}")

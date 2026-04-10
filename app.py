@@ -4,9 +4,6 @@ from fpdf import FPDF
 from datetime import datetime
 import re
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Home Buy - Portal de Propostas", layout="wide")
-
 # --- FUNÇÃO DE LIMPEZA DE DADOS ---
 def para_float(valor):
     if pd.isna(valor): return 0.0
@@ -20,8 +17,7 @@ def para_float(valor):
 # --- VALIDAÇÃO DE CPF ---
 def validar_cpf(cpf):
     cpf = re.sub(r'\D', '', cpf)
-    if len(cpf) != 11 or cpf == cpf[0] * 11: return False
-    return True
+    return len(cpf) == 11
 
 # --- CLASSE PDF ---
 class HomeBuyPDF(FPDF):
@@ -60,7 +56,6 @@ def gerar_pdf(d):
     pdf.seccao("CARACTERIZAÇÃO DO IMÓVEL")
     pdf.campo("UNIDADE", d['unidade'], 190, True)
     pdf.campo("VALOR NEGÓCIO", f"R$ {d['v_negocio']:,.2f}", 95)
-    pdf.campo("INTERMEDIAÇÃO", f"R$ {d['v_intermed']:,.2f}", 95, True)
     pdf.ln(2)
     pdf.seccao("CONDIÇÕES DE PAGAMENTO")
     pdf.set_font('Arial', 'B', 11)
@@ -94,69 +89,66 @@ else:
         col_lote = df.columns[0]
         lotes = df[df[col_lote].astype(str).str.contains('LOTE', case=False, na=False)]
 
-        # --- SELEÇÃO DE UNIDADE (FORA DO FORM PARA ATUALIZAR REAL-TIME) ---
         u = st.selectbox("Selecione a Unidade", lotes[col_lote].unique())
         dados = lotes[lotes[col_lote] == u].iloc[0]
 
-        # Pegando valores da coluna correta
+        # 1. PEGA OS VALORES DAS COLUNAS CORRETAS
         v_negocio = para_float(dados.get("Valor Negócio", 0))
         v_intermed = para_float(dados.get("Intermediação", 0))
         v_ent_imov = para_float(dados.get("Entrada Imóvel", 0))
         
-        # SOMA DA ENTRADA
-        soma_entrada_calculada = v_intermed + v_ent_imov
+        # 2. CALCULA A SOMA DA ENTRADA (Sempre atualiza quando muda o lote)
+        soma_entrada_real = v_intermed + v_ent_imov
 
-        # --- PAINEL DE CONFERÊNCIA VISUAL ---
-        st.info(f"📍 **Unidade:** {u} | 💰 **Valor Negócio:** R$ {v_negocio:,.2f}")
-        
-        with st.form("form_venda"):
+        with st.form("form_venda_v3"):
+            st.subheader(f"📍 Unidade: {u}")
             c1, c2 = st.columns(2)
             nome = c1.text_input("Nome Cliente")
             cpf = c2.text_input("CPF")
             fone = st.text_input("Telefone")
 
+            st.divider()
             st.subheader("💰 Plano Financeiro")
-            col_ent1, col_ent2 = st.columns(2)
             
-            # Valor da entrada pode ser editado, mas inicia com a soma correta
-            v_entrada_final = col_ent1.number_input("Valor da Entrada Total", value=soma_entrada_calculada)
-            parc = col_ent2.slider("Parcelar restante da entrada em:", 1, 4, 1)
+            # Campo de entrada total já inicia com a soma de (Intermed + Entrada Imóvel)
+            v_entrada_total = st.number_input("Valor da Entrada Total (Confirmar)", value=soma_entrada_real, key=f"v_ent_{u}")
+            parc = st.slider("Parcelar saldo da entrada em:", 1, 4, 1)
 
-            # Cálculos automáticos para conferência interna
-            ato = v_negocio * 0.003
-            restante_entrada = v_entrada_final - ato
-            valor_parcela = restante_entrada / parc if restante_entrada > 0 else 0
+            # --- CÁLCULOS DE CONFERÊNCIA ---
+            ato_calc = v_negocio * 0.003
+            # O Saldo para parcelar usa o valor do campo "Entrada Total" menos o Ato
+            saldo_para_parc = v_entrada_total - ato_calc
+            valor_da_parc = saldo_para_parc / parc if saldo_para_parc > 0 else 0
 
-            # --- CAMPO DE CONFERÊNCIA ANTES DE GERAR ---
-            st.markdown(f"""
-            <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #17375e;">
-                <h4 style="margin-top:0;">🔍 Conferência dos Valores:</h4>
-                <b>• Valor Negócio:</b> R$ {v_negocio:,.2f}<br>
-                <b>• Valor da Entrada (Soma):</b> R$ {v_entrada_final:,.2f}<br>
-                <b>• Ato (0,30%):</b> R$ {ato:,.2f}<br>
-                <b>• Restante para Parcelar:</b> R$ {restante_entrada:,.2f}<br>
-                <b>• Parcelas:</b> {parc}x de R$ {valor_parcela:,.2f}
-            </div>
-            """, unsafe_allow_html=True)
-
-            st.write("") # Espaçamento
+            # --- PAINEL DE CONFERÊNCIA (NATIVO, SEM FAIXA BRANCA) ---
+            st.write("---")
+            st.write("### 🔍 Conferência de Valores")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Valor Negócio", f"R$ {v_negocio:,.2f}")
+            m2.metric("Ato (0,30%)", f"R$ {ato_calc:,.2f}")
+            m3.metric("Entrada Total", f"R$ {v_entrada_total:,.2f}")
             
-            if st.form_submit_button("🚀 GERAR PROPOSTA NO PDF"):
+            m4, m5 = st.columns(2)
+            m4.metric("Saldo a Parcelar", f"R$ {saldo_para_parc:,.2f}")
+            m5.metric("Valor da Parcela", f"R$ {valor_da_parc:,.2f}")
+            st.write("---")
+
+            if st.form_submit_button("🚀 GERAR PDF"):
                 if not nome or not cpf:
-                    st.error("Preencha o nome e CPF do cliente.")
+                    st.error("Preencha os dados do cliente.")
                 else:
-                    txt = (f"O pagamento da entrada será realizado da seguinte forma:\n"
-                           f"- ATO (0,30% sobre Valor Negócio): R$ {ato:,.2f}\n"
-                           f"- RESTANTE DA ENTRADA: R$ {restante_entrada:,.2f} em {parc}x de R$ {valor_parcela:,.2f} mensais.")
+                    detalhes_pag = (f"Pagamento da entrada:\n"
+                                   f"- Ato (0,30% sobre negócio): R$ {ato_calc:,.2f}\n"
+                                   f"- Saldo da entrada: R$ {saldo_para_parc:,.2f} em {parc}x de R$ {valor_da_parc:,.2f} mensais.")
 
-                    info = {
+                    info_pdf = {
                         'nome': nome, 'cpf': cpf, 'fone': fone, 'unidade': u,
                         'v_negocio': v_negocio, 'v_intermed': v_intermed,
-                        'v_entrada_total': v_entrada_final, 'txt_pagamento': txt
+                        'v_entrada_total': v_entrada_total, 'txt_pagamento': detalhes_pag
                     }
-                    st.session_state['arq'] = gerar_pdf(info)
-                    st.success("✅ PDF Gerado com os valores acima!")
+                    st.session_state['pdf_gerado'] = gerar_pdf(info_pdf)
+                    st.success("PDF Criado!")
 
-        if 'arq' in st.session_state:
-            with open(st.session_state['arq'], "rb") as f:
-                st.download_button("📥 Baixar PDF Agora", f, file_name=st.session_state['arq'], use_container_width=True)
+        if 'pdf_gerado' in st.session_state:
+            with open(st.session_state['pdf_gerado'], "rb") as f:
+                st.download_button("📥 Baixar Proposta", f, file_name=st.session_state['pdf_gerado'])

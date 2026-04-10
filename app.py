@@ -17,14 +17,14 @@ empreendimentos = {
     }
 }
 
-# ---------------- CACHE TABELA ----------------
+# ---------------- CACHE ----------------
 @st.cache_data
 def carregar_tabela(arquivo):
     df = pd.read_excel(arquivo, skiprows=11)
     df.columns = df.columns.str.strip().str.lower()
     return df
 
-# ---------------- LIMPEZA ----------------
+# ---------------- FUNÇÕES ----------------
 def limpar(valor):
     if pd.isna(valor): return 0.0
     if isinstance(valor, (int, float)): return float(valor)
@@ -41,25 +41,19 @@ def buscar(linha, nomes):
                 return limpar(linha[col])
     return 0.0
 
-# ---------------- PDF ----------------
 def excel_para_pdf(arquivo_excel):
     pasta = os.path.dirname(os.path.abspath(arquivo_excel))
-
     subprocess.run([
-        "libreoffice",
-        "--headless",
-        "--convert-to", "pdf",
-        arquivo_excel,
-        "--outdir", pasta
+        "libreoffice", "--headless", "--convert-to", "pdf",
+        arquivo_excel, "--outdir", pasta
     ])
-
     return arquivo_excel.replace(".xlsx", ".pdf")
 
-# ---------------- PREENCHER EXCEL ----------------
+# ---------------- EXCEL ----------------
 def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 
     if not os.path.exists(modelo):
-        raise FileNotFoundError(f"Arquivo não encontrado: {modelo}")
+        raise FileNotFoundError("Modelo não encontrado")
 
     wb = load_workbook(modelo)
     ws = wb.active
@@ -67,25 +61,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     # CLIENTE
     ws["E5"] = d["nome"]
     ws["D6"] = d["cpf"]
-    ws["J6"] = d["telefone"]
-    ws["O6"] = d["fone_fixo"]
-    ws["D7"] = d["nacionalidade"]
-    ws["J7"] = d["profissao"]
-    ws["P7"] = d["fone_pref"]
-    ws["D8"] = d["estado_civil"]
-    ws["O8"] = d["renda"]
-    ws["E9"] = d["email"]
-
-    # SEGUNDO PROPONENTE
-    ws["G11"] = d["nome2"]
-    ws["D13"] = d["cpf2"]
-    ws["J13"] = d["telefone2"]
-    ws["O13"] = d["fone_fixo2"]
-    ws["D14"] = d["nacionalidade2"]
-    ws["J14"] = d["profissao2"]
-    ws["P14"] = d["fone_pref2"]
-    ws["D15"] = d["estado_civil2"]
-    ws["O15"] = d["renda2"]
 
     # EMPREENDIMENTO
     ws["G18"] = d["proprietario"]
@@ -111,22 +86,16 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["G25"] = "Mensal"
     ws["G26"] = "Única"
 
-    ws["K24"] = d["data_venc"]
-    ws["K25"] = d["data_parc"]
-    ws["K26"] = d["data_saldo"]
+    # COLUNA P
+    ws["P24"] = "Fixo"
+    ws["P25"] = "Reajustável"
+    ws["P26"] = "Reajustável"
+    ws["P33"] = "À vista"
+    ws["P34"] = "Fixo"
 
-    # ENTRADA PERSONALIZADA
-    ws["B33"] = 1
-    ws["B34"] = d["parcelas_ent"] if d["parcelas_ent"] > 1 else ""
-
+    # ENTRADA
     ws["C33"] = d["ato"]
-    ws["C34"] = d["vl_parcela_ent"] if d["parcelas_ent"] > 1 else ""
-
-    ws["G33"] = "Única"
-    ws["G34"] = "Mensal" if d["parcelas_ent"] > 1 else ""
-
-    ws["K33"] = datetime.today().strftime("%d/%m/%Y")
-    ws["K34"] = d["data_parc_ent"] if d["parcelas_ent"] > 1 else ""
+    ws["C34"] = d["parcela_entrada"]
 
     arquivo = "proposta.xlsx"
     wb.save(arquivo)
@@ -134,9 +103,8 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 
 # ---------------- APP ----------------
 
-st.sidebar.title("⚙️ Sistema")
+st.sidebar.title("Sistema")
 
-# BOTÃO ATUALIZAR
 if st.sidebar.button("🔄 Atualizar tabela"):
     st.cache_data.clear()
     st.success("Tabela atualizada!")
@@ -146,7 +114,6 @@ st.subheader("🏢 Empreendimento")
 emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()))
 emp = empreendimentos[emp_nome]
 
-# CARREGAR TABELA AUTOMÁTICA
 df = carregar_tabela(emp["tabela"])
 
 col = df.columns[0]
@@ -169,100 +136,124 @@ ato_min = valor_negocio * 0.003
 st.subheader("Cliente")
 nome = st.text_input("Nome")
 cpf = st.text_input("CPF")
-telefone = st.text_input("Telefone")
-fone_fixo = st.text_input("Fixo")
-nacionalidade = st.text_input("Nacionalidade")
-profissao = st.text_input("Profissão")
-fone_pref = st.text_input("Fone preferência")
-estado_civil = st.text_input("Estado civil")
-renda = st.text_input("Renda")
-email = st.text_input("Email")
 
 # ENTRADA
 st.subheader("Entrada")
-valor_cliente = st.number_input("Entrada do cliente")
+valor_cliente = st.number_input("Entrada do cliente", min_value=0.0)
 
-ato = min(valor_cliente, ato_min)
+# PERSONALIZAÇÃO
+personalizar = st.checkbox("⚙️ Opções personalizáveis")
+
+if personalizar:
+    ato_manual = st.number_input("Valor de ato", min_value=0.0)
+else:
+    ato_manual = 0
+
+# ATO
+ato = ato_manual if ato_manual > 0 else ato_min
+
+# PARCELAS
 restante = entrada_total - valor_cliente
 if restante < 0:
     restante = 0
 
-parcelas_ent = st.slider("Parcelar entrada", 1, 4, 1)
-vl_parcela_ent = restante / parcelas_ent if parcelas_ent > 1 else 0
+parcelas = st.slider("Parcelar entrada", 1, 4, 1)
 
-# DATAS
-st.subheader("Datas")
-data_venc = st.date_input("Vencimento")
-data_parc = st.date_input("Parcelas 36x")
-data_saldo = st.date_input("Saldo")
-data_parc_ent = st.date_input("Parcelas entrada")
+parcelas_lista = []
 
-# GERAR
+if personalizar and parcelas > 1:
+    st.write("Parcelas personalizadas")
+    soma = 0
+
+    for i in range(parcelas):
+        val = st.number_input(f"Parcela {i+1}", min_value=0.0, key=i)
+        parcelas_lista.append(val)
+        soma += val
+
+    parcela_entrada = parcelas_lista[0] if parcelas_lista else 0
+
+else:
+    parcela_entrada = restante / parcelas if parcelas > 1 else 0
+
+# ---------------- CONFERÊNCIA ----------------
+
+st.divider()
+st.subheader("📊 Conferência da Proposta")
+
+c1, c2, c3 = st.columns(3)
+
+c1.metric("Unidade", unidade)
+c1.metric("Área", f"{area:.2f}")
+
+c2.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
+c2.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
+
+c3.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
+c3.metric("Intermediação", f"R$ {intermed:,.2f}")
+
+st.info(f"Entrada Total: R$ {entrada_total:,.2f}")
+
+c4, c5, c6 = st.columns(3)
+
+c4.metric("Entrada Cliente", f"R$ {valor_cliente:,.2f}")
+c5.metric("Ato", f"R$ {ato:,.2f}")
+
+restante_entrada = entrada_total - valor_cliente
+if restante_entrada < 0:
+    restante_entrada = 0
+
+c6.metric("Restante", f"R$ {restante_entrada:,.2f}")
+
+if parcelas > 1:
+    if personalizar:
+        soma_parcelas = sum(parcelas_lista)
+        st.warning(f"Soma parcelas: {soma_parcelas:.2f}")
+        if abs(soma_parcelas - restante_entrada) > 0.01:
+            st.error("Parcelas não fecham")
+    else:
+        st.success(f"{parcelas}x de R$ {parcela_entrada:.2f}")
+
+if ato > valor_cliente:
+    st.error("Ato maior que entrada!")
+
+# ---------------- GERAR ----------------
+
 if st.button("GERAR PDF"):
     try:
         dados = {
             "nome": nome,
             "cpf": cpf,
-            "telefone": telefone,
-            "fone_fixo": fone_fixo,
-            "nacionalidade": nacionalidade,
-            "profissao": profissao,
-            "fone_pref": fone_pref,
-            "estado_civil": estado_civil,
-            "renda": renda,
-            "email": email,
-
-            "nome2": "",
-            "cpf2": "",
-            "telefone2": "",
-            "fone_fixo2": "",
-            "nacionalidade2": "",
-            "profissao2": "",
-            "fone_pref2": "",
-            "estado_civil2": "",
-            "renda2": "",
-
             "proprietario": emp["proprietario"],
             "empreendimento": emp["nome"],
             "logradouro": emp["logradouro"],
             "unidade": unidade,
             "area": area,
-
             "valor_negocio": valor_negocio,
             "entrada_total": entrada_total,
             "valor_imovel": valor_imovel,
             "entrada_imovel": entrada_imovel,
             "parcela_36": parcela_36,
             "saldo": saldo,
-
-            "data_venc": data_venc.strftime("%d/%m/%Y"),
-            "data_parc": data_parc.strftime("%d/%m/%Y"),
-            "data_saldo": data_saldo.strftime("%d/%m/%Y"),
-            "data_parc_ent": data_parc_ent.strftime("%d/%m/%Y"),
-
             "ato": ato,
-            "parcelas_ent": parcelas_ent,
-            "vl_parcela_ent": vl_parcela_ent
+            "parcela_entrada": parcela_entrada
         }
 
-        excel_file = preencher_proposta(dados)
-        pdf_file = excel_para_pdf(excel_file)
+        excel = preencher_proposta(dados)
+        pdf = excel_para_pdf(excel)
 
-        if os.path.exists(pdf_file):
-            nome_arquivo = f"Proposta_{unidade.replace(' ', '_')}.pdf"
-
-            with open(pdf_file, "rb") as f:
+        if os.path.exists(pdf):
+            with open(pdf, "rb") as f:
                 st.download_button(
                     "📥 Baixar PDF",
                     f,
-                    file_name=nome_arquivo,
+                    file_name=f"Proposta_{unidade}.pdf",
                     mime="application/pdf"
                 )
 
-            st.success("✅ Proposta gerada!")
+            st.success("Proposta gerada!")
 
         else:
-            st.error("❌ PDF não foi gerado")
+            st.error("Erro ao gerar PDF")
 
     except Exception as e:
         st.error(f"Erro: {e}")

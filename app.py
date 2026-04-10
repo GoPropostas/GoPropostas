@@ -14,7 +14,7 @@ def validar_cpf(cpf):
         if digito != int(cpf[i]): return False
     return True
 
-# --- CLASSE PDF (ESTILO FIEL HOME BUY) ---
+# --- CLASSE PDF (LAYOUT FIEL AO MODELO ENVIADO) ---
 class HomeBuyPDF(FPDF):
     def header(self):
         self.set_fill_color(23, 55, 94)
@@ -71,21 +71,21 @@ def gerar_pdf_proposta(d):
     pdf.campo("EMPREENDIMENTO", d['loteamento'], 130)
     pdf.campo("UNIDADE", d['unidade'], 60, True)
     pdf.campo("VALOR TOTAL NEGÓCIO", f"R$ {d['v_negocio']:,.2f}", 95)
-    pdf.campo("VALOR DA COMISSÃO", f"R$ {d['v_comissao']:,.2f}", 95, True)
+    pdf.campo("VALOR COMISSÃO", f"R$ {d['v_comissao']:,.2f}", 95, True)
     pdf.campo("VALOR TOTAL IMÓVEL", f"R$ {d['v_total_imovel']:,.2f}", 190, True)
 
-    # PAGAMENTO DA ENTRADA
+    # PAGAMENTO (COM ENTRADA TOTAL EXPLÍCITA)
     pdf.ln(2)
     pdf.seccao("FORMA DE PAGAMENTO DA ENTRADA")
     pdf.set_font('Arial', 'B', 10)
-    pdf.cell(190, 8, f"VALOR DA ENTRADA TOTAL: R$ {d['v_entrada_total']:,.2f}", 0, 1, 'L')
+    pdf.cell(190, 8, f"VALOR DA ENTRADA TOTAL (Intermediação + Entrada Imóvel): R$ {d['v_entrada_total']:,.2f}", 0, 1, 'L')
     pdf.set_font('Arial', '', 9)
     pdf.multi_cell(190, 6, d['txt_pagamento'], 'B')
 
-    # RODAPÉ LEGAL
+    # TEXTO LEGAL
     pdf.ln(5)
     pdf.set_font('Arial', '', 7)
-    pdf.multi_cell(190, 3, "Cláusula Compromissória: Todo litígio ou controvérsia decorrente deste instrumento será decidido por arbitragem na 2ª Corte de Goiânia-GO (Lei 9.307/1996).")
+    pdf.multi_cell(190, 3, "Cláusula Compromissória: Todo litígio decorrente deste instrumento será decidido por arbitragem na 2ª Corte de Goiânia-GO (Lei 9.307/1996).")
     
     pdf.ln(10)
     pdf.set_font('Arial', 'B', 8)
@@ -107,18 +107,17 @@ with st.sidebar:
 
 if st.session_state['db'] is not None:
     df = st.session_state['db']
-    # Filtra apenas linhas que são lotes
     lotes = df[df[df.columns[0]].astype(str).str.contains('LOTE', case=False, na=False)]
 
     with st.form("proposta_completa"):
         u = st.selectbox("Selecione a Unidade", lotes[df.columns[0]].unique())
         
-        # Puxa valores da tabela para sugestão
+        # BUSCA DE VALORES REAIS DA TABELA
         linha_lote = lotes[lotes[df.columns[0]] == u].iloc[0]
         v_negocio = float(linha_lote[df.columns[2]])
-        v_intermediacao = float(linha_lote[df.columns[3]]) # Coluna Intermediação
-        v_entrada_imovel = float(linha_lote[df.columns[4]]) # Coluna Entrada Imóvel
-        sugestao_entrada = v_intermediacao + v_entrada_imovel
+        v_intermed = float(linha_lote[df.columns[3]]) # Coluna Intermediação
+        v_ent_imovel = float(linha_lote[df.columns[4]]) # Coluna Entrada Imóvel
+        entrada_total_calculada = v_intermed + v_ent_imovel
 
         st.subheader("Dados do Proponente")
         c1, c2 = st.columns(2)
@@ -143,23 +142,24 @@ if st.session_state['db'] is not None:
         ccpf = cc2.text_input("CPF Cônjuge")
         crenda = cc3.text_input("Renda Cônjuge")
 
-        st.subheader("Condições Financeiras")
-        v_ent_informada = st.number_input("Valor da Entrada Total (Intermediação + Entrada Imóvel)", value=sugestao_entrada)
+        st.subheader("Condições da Entrada")
+        # Aqui o valor já aparece somado corretamente conforme a sua regra
+        v_ent_final = st.number_input("Confirmar Valor da Entrada Total (Soma da Tabela)", value=entrada_total_calculada)
         num_parcelas = st.selectbox("Parcelar o SALDO da entrada em:", [1, 2, 3, 4])
 
-        if st.form_submit_button("GERAR PDF"):
+        if st.form_submit_button("GERAR PROPOSTA EM PDF"):
             if not validar_cpf(cpf):
                 st.error("CPF Inválido!")
             else:
-                # Cálculos
+                # CÁLCULOS
                 ato_030 = v_negocio * 0.003
-                saldo = v_ent_informada - ato_030
-                v_parcela = saldo / num_parcelas if saldo > 0 else 0
+                saldo_para_parcelar = v_ent_final - ato_030
+                valor_da_parcela = saldo_para_parcelar / num_parcelas if saldo_para_parcelar > 0 else 0
 
                 txt_pag = (
-                    f"Detalhamento do pagamento da entrada:\n"
-                    f"- Sinal/Ato (0,30% do negócio): R$ {ato_030:,.2f}\n"
-                    f"- Saldo remanescente da entrada: R$ {saldo:,.2f} parcelado em {num_parcelas}x de R$ {v_parcela:,.2f}."
+                    f"Plano de Pagamento da Entrada:\n"
+                    f"1. Ato/Sinal (0,30% do negócio): R$ {ato_030:,.2f}\n"
+                    f"2. Saldo Remanescente: R$ {saldo_para_parcelar:,.2f} em {num_parcelas}x de R$ {valor_da_parcela:,.2f} mensais."
                 )
 
                 info = {
@@ -167,13 +167,13 @@ if st.session_state['db'] is not None:
                     'nac': nac, 'prof': prof, 'est_civil': est_civil, 'renda': '0,00', 'email': email,
                     'cnome': cnome, 'ccpf': ccpf, 'cfone': '', 'crenda': crenda,
                     'loteamento': "RESIDENCIAL FREI GALVÃO", 'unidade': u,
-                    'v_negocio': v_negocio, 'v_comissao': v_intermediacao, 'v_total_imovel': v_negocio - v_intermediacao,
-                    'v_entrada_total': v_ent_informada, 'txt_pagamento': txt_pag
+                    'v_negocio': v_negocio, 'v_comissao': v_intermed, 'v_total_imovel': v_negocio - v_intermed,
+                    'v_entrada_total': v_ent_final, 'txt_pagamento': txt_pag
                 }
                 
-                st.session_state['pdf'] = gerar_pdf_proposta(info)
-                st.success("Proposta Criada com Sucesso!")
+                st.session_state['pdf_final'] = gerar_pdf_proposta(info)
+                st.success("✅ Proposta Gerada!")
 
-    if 'pdf' in st.session_state:
-        with open(st.session_state['pdf'], "rb") as f:
-            st.download_button("📥 Baixar PDF Oficial", f, file_name=st.session_state['pdf'])
+    if 'pdf_final' in st.session_state:
+        with open(st.session_state['pdf_final'], "rb") as f:
+            st.download_button("📥 Baixar Proposta PDF", f, file_name=st.session_state['pdf_final'])

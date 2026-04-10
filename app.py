@@ -1,137 +1,137 @@
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
-from datetime import datetime
-import re
 
-# --- FUNÇÃO DE LIMPEZA TOTAL ---
+# --- LIMPEZA ---
 def limpar_e_converter(valor):
     if pd.isna(valor): return 0.0
     if isinstance(valor, (int, float)): return float(valor)
-    # Remove R$, pontos de milhar e troca vírgula por ponto
-    texto = str(valor).replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.').strip()
+    texto = str(valor).replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
     try:
         return float(texto)
     except:
         return 0.0
 
-# --- CLASSE PDF ---
+# --- BUSCAR COLUNA INTELIGENTE ---
+def buscar_coluna(linha, nomes):
+    for nome in nomes:
+        if nome in linha.index:
+            return limpar_e_converter(linha[nome])
+    return 0.0
+
+# --- PDF ---
 class HomeBuyPDF(FPDF):
     def header(self):
-        self.set_fill_color(23, 55, 94)
-        self.rect(10, 10, 190, 10, 'F')
         self.set_font('Arial', 'B', 12)
-        self.set_text_color(255, 255, 255)
-        self.cell(190, 10, 'PROPOSTA DE COMPRA - HOME BUY', 0, 1, 'C')
-        self.ln(5)
-
-    def seccao(self, titulo):
-        self.set_fill_color(240, 240, 240)
-        self.set_text_color(23, 55, 94)
-        self.set_font('Arial', 'B', 10)
-        self.cell(190, 7, f" {titulo}", 0, 1, 'L', True)
-        self.ln(2)
-
-    def campo(self, label, valor, largura, nova_linha=False):
-        self.set_font('Arial', 'B', 8)
-        self.cell(largura * 0.35, 6, f"{label}:", 0, 0)
-        self.set_font('Arial', '', 9)
-        x, y = self.get_x(), self.get_y()
-        self.cell(largura * 0.65, 6, str(valor), 0, 0)
-        self.line(x, y + 5, x + (largura * 0.65) - 2, y + 5)
-        if nova_linha: self.ln(8)
+        self.cell(190, 10, 'PROPOSTA DE COMPRA', 0, 1, 'C')
 
 def gerar_pdf(d):
     pdf = HomeBuyPDF()
     pdf.add_page()
-    pdf.seccao("DETALHES DO IMÓVEL")
-    pdf.campo("UNIDADE", d['unidade'], 190, True)
-    pdf.campo("VALOR NEGÓCIO", f"R$ {d['v_negocio']:,.2f}", 190, True)
-    pdf.ln(2)
-    pdf.seccao("PAGAMENTO DA ENTRADA")
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(190, 8, f"ENTRADA TOTAL ACORDADA: R$ {d['v_entrada_total']:,.2f}", 0, 1)
+
     pdf.set_font('Arial', '', 10)
-    pdf.multi_cell(190, 6, d['txt_pagamento'], 'B')
-    path = f"Proposta_{d['unidade'].replace(' ', '_')}.pdf"
+    pdf.cell(190, 8, f"Unidade: {d['unidade']}", 0, 1)
+    pdf.cell(190, 8, f"Valor Negócio: R$ {d['v_negocio']:,.2f}", 0, 1)
+    pdf.cell(190, 8, f"Entrada Total: R$ {d['entrada_total']:,.2f}", 0, 1)
+    pdf.cell(190, 8, f"Ato: R$ {d['ato']:,.2f}", 0, 1)
+    pdf.cell(190, 8, f"Restante Entrada: R$ {d['restante']:,.2f}", 0, 1)
+    pdf.cell(190, 8, f"Parcelamento Entrada: {d['parcelas']}x de R$ {d['valor_parcela']:,.2f}", 0, 1)
+    pdf.cell(190, 8, f"Parcelas 36x: R$ {d['parcela_36']:,.2f}", 0, 1)
+    pdf.cell(190, 8, f"Saldo Devedor: R$ {d['saldo']:,.2f}", 0, 1)
+
+    path = "proposta.pdf"
     pdf.output(path)
     return path
 
-# --- INTERFACE ---
-if 'db' not in st.session_state: st.session_state['db'] = None
+# --- APP ---
+if 'db' not in st.session_state:
+    st.session_state['db'] = None
 
-menu = st.sidebar.radio("Navegação", ["Corretor", "Admin"])
+menu = st.sidebar.radio("Menu", ["Corretor", "Admin"])
 
 if menu == "Admin":
-    st.header("⚙️ Configurações")
     if st.text_input("Senha", type="password") == "admin123":
         up = st.file_uploader("Tabela Excel", type=['xlsx'])
         if up:
-            # Lendo a tabela e limpando nomes de colunas
-            df_raw = pd.read_excel(up, skiprows=11)
-            df_raw.columns = [str(c).strip() for c in df_raw.columns]
-            st.session_state['db'] = df_raw
+            df = pd.read_excel(up, skiprows=11)
+
+            # LIMPAR COLUNAS
+            df.columns = (
+                df.columns.astype(str)
+                .str.strip()
+                .str.lower()
+                .str.replace('\n', ' ')
+            )
+
+            st.session_state['db'] = df
             st.success("Tabela carregada!")
+
 else:
-    st.header("📝 Gerador de Propostas")
     if st.session_state['db'] is None:
-        st.info("Aguardando tabela...")
+        st.info("Envie a tabela no Admin")
     else:
         df = st.session_state['db']
+
         col_lote = df.columns[0]
-        lotes = df[df[col_lote].astype(str).str.contains('LOTE', case=False, na=False)]
+        lotes = df[df[col_lote].notna()]
 
-        u = st.selectbox("Selecione a Unidade", lotes[col_lote].unique())
-        dados_linha = lotes[lotes[col_lote] == u].iloc[0]
+        unidade = st.selectbox("Lote", lotes[col_lote].unique())
+        linha = lotes[lotes[col_lote] == unidade].iloc[0]
 
-        # --- CÁLCULO MATEMÁTICO REAL ---
-        # Buscando colunas por nome exato
-        val_negocio = limpar_e_converter(dados_linha.get("Valor Negócio", 0))
-        val_intermed = limpar_e_converter(dados_linha.get("Intermediação", 0))
-        val_ent_imovel = limpar_e_converter(dados_linha.get("Entrada Imóvel", 0))
-        
-        # A SOMA QUE DEVE DAR 8550.68 NO LOTE 6
-        entrada_sugerida = val_intermed + val_ent_imovel
+        # --- DADOS DA PLANILHA ---
+        valor_negocio = buscar_coluna(linha, ["valor negócio", "valor negocio"])
+        intermed = buscar_coluna(linha, ["intermediação", "intermediacao"])
+        entrada_imovel = buscar_coluna(linha, ["entrada imóvel", "entrada imovel"])
+        parcela_36 = buscar_coluna(linha, ["36x", "parcela 36x"])
+        saldo = buscar_coluna(linha, ["saldo", "saldo devedor"])
 
-        with st.form("form_final_v10"):
-            st.write(f"### Unidade Selecionada: {u}")
-            nome = st.text_input("Nome do Cliente")
-            cpf = st.text_input("CPF")
-            
-            st.divider()
-            # Entrada Total (Campo editável, mas inicia com a soma correta)
-            entrada_cliente = st.number_input("Valor da Entrada Total (Soma da Tabela)", value=entrada_sugerida, key=f"v_ent_{u}")
-            parcelas = st.slider("Dividir o Saldo Restante em:", 1, 4, 1)
+        # --- CÁLCULOS ---
+        entrada_total = intermed + entrada_imovel
+        ato_minimo = valor_negocio * 0.003
 
-            # Lógica do Ato e Saldo
-            valor_ato = val_negocio * 0.003
-            saldo_a_parcelar = entrada_cliente - valor_ato
-            valor_parcela = saldo_a_parcelar / parcelas if saldo_a_parcelar > 0 else 0
+        st.write(f"Entrada Total (Tabela): R$ {entrada_total:,.2f}")
+        st.write(f"Ato Mínimo: R$ {ato_minimo:,.2f}")
 
-            # --- CONFERÊNCIA VISUAL ---
-            st.write("---")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Intermediação", f"R$ {val_intermed:,.2f}")
-            c2.metric("Entrada Imóvel", f"R$ {val_ent_imovel:,.2f}")
-            c3.metric("SOMA TOTAL", f"R$ {entrada_cliente:,.2f}")
+        # --- INPUT CLIENTE ---
+        valor_cliente = st.number_input("Entrada que cliente quer dar", min_value=0.0)
 
-            st.warning(f"**PLANO:** Ato de R$ {valor_ato:,.2f} + {parcelas}x de R$ {valor_parcela:,.2f}")
+        # --- LÓGICA ---
+        ato = min(valor_cliente, ato_minimo)
+        restante_cliente = valor_cliente - ato
 
-            if st.form_submit_button("GERAR PROPOSTA"):
-                txt_pag = (
-                    f"A entrada total de R$ {entrada_cliente:,.2f} será paga conforme abaixo:\n"
-                    f"- 1x de R$ {valor_ato:,.2f} (ATO/SINAL - 0,30% do valor do negócio).\n"
-                    f"- {parcelas}x de R$ {valor_parcela:,.2f} mensais (Saldo restante da entrada)."
-                )
-                
-                info = {
-                    'nome': nome, 'cpf': cpf, 'unidade': u,
-                    'v_negocio': val_negocio, 'v_entrada_total': entrada_cliente,
-                    'txt_pagamento': txt_pag
-                }
-                st.session_state['pdf'] = gerar_pdf(info)
-                st.success("✅ Proposta Gerada!")
+        restante_entrada = entrada_total - restante_cliente
+        if restante_entrada < 0:
+            restante_entrada = 0
 
-        if 'pdf' in st.session_state:
-            with open(st.session_state['pdf'], "rb") as f:
-                st.download_button("📥 Baixar PDF", f, file_name=st.session_state['pdf'], use_container_width=True)
+        parcelas = st.slider("Parcelar restante da entrada", 1, 4, 1)
+
+        valor_parcela = restante_entrada / parcelas if restante_entrada > 0 else 0
+
+        # --- VISUAL ---
+        st.divider()
+        st.write(f"Ato: R$ {ato:,.2f}")
+        st.write(f"Restante da entrada: R$ {restante_entrada:,.2f}")
+        st.write(f"{parcelas}x de R$ {valor_parcela:,.2f}")
+
+        st.write("---")
+        st.write(f"Parcelas 36x (tabela): R$ {parcela_36:,.2f}")
+        st.write(f"Saldo Devedor: R$ {saldo:,.2f}")
+
+        # --- GERAR PDF ---
+        if st.button("Gerar Proposta"):
+            dados = {
+                "unidade": unidade,
+                "v_negocio": valor_negocio,
+                "entrada_total": entrada_total,
+                "ato": ato,
+                "restante": restante_entrada,
+                "parcelas": parcelas,
+                "valor_parcela": valor_parcela,
+                "parcela_36": parcela_36,
+                "saldo": saldo
+            }
+
+            path = gerar_pdf(dados)
+
+            with open(path, "rb") as f:
+                st.download_button("Baixar PDF", f, file_name="proposta.pdf")

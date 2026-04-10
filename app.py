@@ -14,11 +14,6 @@ def para_float(valor):
     except:
         return 0.0
 
-# --- VALIDAÇÃO DE CPF ---
-def validar_cpf(cpf):
-    cpf = re.sub(r'\D', '', cpf)
-    return len(cpf) == 11
-
 # --- CLASSE PDF ---
 class HomeBuyPDF(FPDF):
     def header(self):
@@ -26,7 +21,7 @@ class HomeBuyPDF(FPDF):
         self.rect(10, 10, 190, 10, 'F')
         self.set_font('Arial', 'B', 14)
         self.set_text_color(255, 255, 255)
-        self.cell(190, 10, 'PROPOSTA DE COMPRA DE LOTEAMENTO', 0, 1, 'C')
+        self.cell(190, 10, 'PROPOSTA DE COMPRA - HOME BUY', 0, 1, 'C')
         self.ln(5)
 
     def seccao(self, titulo):
@@ -48,20 +43,22 @@ class HomeBuyPDF(FPDF):
 def gerar_pdf(d):
     pdf = HomeBuyPDF()
     pdf.add_page()
-    pdf.seccao("PROPONENTE / EMPRESA")
+    pdf.seccao("DADOS DO CLIENTE")
     pdf.campo("NOME", d['nome'], 190, True)
-    pdf.campo("CPF", d['cpf'], 95)
-    pdf.campo("FONE", d['fone'], 95, True)
+    pdf.campo("CPF", d['cpf'], 95, True)
+    
     pdf.ln(2)
-    pdf.seccao("CARACTERIZAÇÃO DO IMÓVEL")
+    pdf.seccao("DADOS DO IMÓVEL")
     pdf.campo("UNIDADE", d['unidade'], 190, True)
-    pdf.campo("VALOR NEGÓCIO", f"R$ {d['v_negocio']:,.2f}", 95)
+    pdf.campo("VALOR NEGÓCIO", f"R$ {d['v_negocio']:,.2f}", 95, True)
+    
     pdf.ln(2)
-    pdf.seccao("CONDIÇÕES DE PAGAMENTO")
+    pdf.seccao("PAGAMENTO DA ENTRADA")
     pdf.set_font('Arial', 'B', 11)
-    pdf.cell(190, 8, f"VALOR TOTAL DA ENTRADA: R$ {d['v_entrada_total']:,.2f}", 0, 1)
+    pdf.cell(190, 8, f"VALOR TOTAL DISPONIBILIZADO: R$ {d['v_entrada_total']:,.2f}", 0, 1)
     pdf.set_font('Arial', '', 10)
     pdf.multi_cell(190, 6, d['txt_pagamento'], 'B')
+    
     path = f"Proposta_{d['unidade'].replace(' ', '_')}.pdf"
     pdf.output(path)
     return path
@@ -69,12 +66,13 @@ def gerar_pdf(d):
 # --- INTERFACE ---
 if 'db' not in st.session_state: st.session_state['db'] = None
 
+st.sidebar.title("Menu")
 menu = st.sidebar.radio("Navegação", ["Corretor", "Admin"])
 
 if menu == "Admin":
-    st.header("⚙️ Configurações")
+    st.header("⚙️ Admin")
     if st.text_input("Senha", type="password") == "admin123":
-        up = st.file_uploader("Subir Tabela", type=['xlsx'])
+        up = st.file_uploader("Subir Tabela Excel", type=['xlsx'])
         if up:
             df_admin = pd.read_excel(up, skiprows=11)
             df_admin.columns = [str(c).strip() for c in df_admin.columns]
@@ -83,73 +81,61 @@ if menu == "Admin":
 else:
     st.header("📝 Gerar Proposta")
     if st.session_state['db'] is None:
-        st.info("Aguardando tabela do Admin.")
+        st.info("Aguardando tabela do Admin...")
     else:
         df = st.session_state['db']
         col_lote = df.columns[0]
         lotes = df[df[col_lote].astype(str).str.contains('LOTE', case=False, na=False)]
 
-        # 1. ESCOLHA DA UNIDADE (FORA DO FORM PARA CALCULAR NA HORA)
         u = st.selectbox("Selecione a Unidade", lotes[col_lote].unique())
         dados = lotes[lotes[col_lote] == u].iloc[0]
 
-        # 2. CAPTURA DOS VALORES DAS COLUNAS (COM LIMPEZA)
+        # --- VALORES DA PLANILHA ---
         v_negocio = para_float(dados.get("Valor Negócio", 0))
         v_intermed = para_float(dados.get("Intermediação", 0))
         v_ent_imov = para_float(dados.get("Entrada Imóvel", 0))
-        
-        # 3. SOMA AUTOMÁTICA DA ENTRADA
-        soma_entrada_final = v_intermed + v_ent_imov
+        soma_sugerida = v_intermed + v_ent_imov
 
-        # 4. PAINEL DE CONFERÊNCIA (SEM FAIXA BRANCA, USANDO MÉTRICAS)
-        st.write("### 📊 Resumo Financeiro da Unidade")
-        c_a, c_b, c_c = st.columns(3)
-        c_a.metric("Valor Negócio", f"R$ {v_negocio:,.2f}")
-        c_b.metric("Intermediação", f"R$ {v_intermed:,.2f}")
-        c_c.metric("Entrada Imóvel", f"R$ {v_ent_imov:,.2f}")
-        
-        st.success(f"💰 **ENTRADA TOTAL CALCULADA:** R$ {soma_entrada_final:,.2f}")
-        st.write("---")
+        with st.form("form_venda_v4"):
+            nome = st.text_input("Nome do Cliente")
+            cpf = st.text_input("CPF")
+            
+            st.divider()
+            st.subheader("💰 Plano de Entrada")
+            
+            # CAMPO ONDE VOCÊ COLOCA O VALOR QUE O CLIENTE QUER DAR
+            v_entrada_cliente = st.number_input("Quanto o cliente dará de entrada total?", value=soma_sugerida)
+            qtd_parc = st.slider("Parcelar o SALDO RESTANTE em:", 1, 4, 1)
 
-        with st.form("form_venda_final"):
-            st.subheader("👤 Dados do Cliente")
-            c1, c2 = st.columns(2)
-            nome = c1.text_input("Nome Cliente")
-            cpf = c2.text_input("CPF")
-            fone = st.text_input("Telefone")
+            # --- LÓGICA DE CÁLCULO ---
+            ato_obrigatorio = v_negocio * 0.003
+            saldo_apos_ato = v_entrada_cliente - ato_obrigatorio
+            valor_da_parcela = saldo_apos_ato / qtd_parc if saldo_apos_ato > 0 else 0
 
-            st.subheader("💳 Condições da Entrada")
-            # Este campo puxa o valor da soma automaticamente
-            v_entrada_user = st.number_input("Confirmar Valor da Entrada", value=soma_entrada_final, key=f"ent_{u}")
-            num_parc = st.slider("Parcelar o restante em:", 1, 4, 1)
-
-            # Cálculos das parcelas
-            ato_calc = v_negocio * 0.003
-            saldo_parc = v_entrada_user - ato_calc
-            valor_da_parcela = saldo_parc / num_parc if saldo_parc > 0 else 0
-
-            st.info(f"O cálculo será: Ato de R$ {ato_calc:,.2f} + {num_parc} parcelas de R$ {valor_da_parcela:,.2f}")
+            # --- PAINEL DE CONFERÊNCIA EM TEMPO REAL ---
+            st.write("### 🔍 Resumo dos Cálculos")
+            col_calc1, col_calc2 = st.columns(2)
+            col_calc1.metric("Ato (Retirado da Entrada)", f"R$ {ato_obrigatorio:,.2f}")
+            col_calc2.metric("Saldo para Parcelar", f"R$ {saldo_apos_ato:,.2f}")
+            
+            st.info(f"O plano será: 1x de R$ {ato_obrigatorio:,.2f} (Ato) + {qtd_parc}x de R$ {valor_da_parcela:,.2f} (Parcelas)")
 
             if st.form_submit_button("🚀 GERAR PROPOSTA"):
-                if not nome or not cpf:
-                    st.error("Preencha os dados do cliente.")
-                else:
-                    texto_pagamento = (
-                        f"O pagamento da entrada será realizado da seguinte forma:\n"
-                        f"- ATO (0,30% sobre o Valor do Negócio): R$ {ato_calc:,.2f}\n"
-                        f"- SALDO DA ENTRADA: R$ {saldo_parc:,.2f} parcelado em {num_parc}x de R$ {valor_da_parcela:,.2f} mensais."
-                    )
+                txt_pag = (
+                    f"A entrada total de R$ {v_entrada_cliente:,.2f} será paga da seguinte forma:\n"
+                    f"- 1ª Parcela (ATO/SINAL): R$ {ato_obrigatorio:,.2f} (correspondente a 0,30% do valor do negócio).\n"
+                    f"- SALDO RESTANTE: R$ {saldo_apos_ato:,.2f} dividido em {qtd_parc} parcelas de R$ {valor_da_parcela:,.2f} mensais."
+                )
 
-                    info_pdf = {
-                        'nome': nome, 'cpf': cpf, 'fone': fone, 'unidade': u,
-                        'v_negocio': v_negocio, 'v_entrada_total': v_entrada_user,
-                        'v_intermed': v_intermed, 'v_ent_imovel': v_ent_imov,
-                        'txt_pagamento': texto_pagamento
-                    }
-                    
-                    st.session_state['pdf_gerado'] = gerar_pdf(info_pdf)
-                    st.success("✅ Proposta gerada com os valores conferidos!")
+                info_pdf = {
+                    'nome': nome, 'cpf': cpf, 'unidade': u,
+                    'v_negocio': v_negocio, 'v_entrada_total': v_entrada_cliente,
+                    'txt_pagamento': txt_pag
+                }
+                
+                st.session_state['pdf_link'] = gerar_pdf(info_pdf)
+                st.success("✅ Proposta Gerada!")
 
-        if 'pdf_gerado' in st.session_state:
-            with open(st.session_state['pdf_gerado'], "rb") as f:
-                st.download_button("📥 Baixar PDF Agora", f, file_name=st.session_state['pdf_gerado'], use_container_width=True)
+        if 'pdf_link' in st.session_state:
+            with open(st.session_state['pdf_link'], "rb") as f:
+                st.download_button("📥 Baixar Proposta em PDF", f, file_name=st.session_state['pdf_link'], use_container_width=True)

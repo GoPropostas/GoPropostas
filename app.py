@@ -5,7 +5,7 @@ from datetime import datetime
 import re
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Home Buy - Portal de Propostas", layout="wide")
+st.set_page_config(page_title="Home Buy - Sistema de Propostas", layout="wide")
 
 # --- VALIDAÇÃO DE CPF ---
 def validar_cpf(cpf):
@@ -17,10 +17,10 @@ def validar_cpf(cpf):
         if digito != int(cpf[i]): return False
     return True
 
-# --- CLASSE PDF (ESTILO OFICIAL HOME BUY) ---
+# --- CLASSE PDF (ESTILO OFICIAL) ---
 class HomeBuyPDF(FPDF):
     def header(self):
-        self.set_fill_color(23, 55, 94) # Azul escuro institucional
+        self.set_fill_color(23, 55, 94)
         self.rect(10, 10, 190, 10, 'F')
         self.set_font('Arial', 'B', 14)
         self.set_text_color(255, 255, 255)
@@ -49,7 +49,6 @@ def gerar_pdf_completo(d):
     pdf = HomeBuyPDF()
     pdf.add_page()
     
-    # 1. PROPONENTE
     pdf.seccao("PROPONENTE / EMPRESA")
     pdf.campo("NOME", d['nome'], 190, True)
     pdf.campo("CPF/CNPJ", d['cpf'], 65)
@@ -62,14 +61,12 @@ def gerar_pdf_completo(d):
     pdf.campo("RENDA", f"R$ {d['renda']}", 95, True)
     pdf.campo("E-MAIL", d['email'], 190, True)
     
-    # 2. CÔNJUGE
     pdf.ln(2)
     pdf.seccao("CÔNJUGE / 2º PROPONENTE")
     pdf.campo("NOME", d['cnome'], 190, True)
     pdf.campo("CPF/CNPJ", d['ccpf'], 95)
     pdf.campo("RENDA", f"R$ {d['crenda']}", 95, True)
 
-    # 3. IMÓVEL
     pdf.ln(2)
     pdf.seccao("CARACTERIZAÇÃO DO IMÓVEL")
     pdf.campo("EMPREENDIMENTO", d['loteamento'], 130)
@@ -79,7 +76,6 @@ def gerar_pdf_completo(d):
     pdf.campo("ENTRADA IMÓVEL", f"R$ {d['v_ent_imovel']:,.2f}", 95)
     pdf.campo("VALOR TOTAL IMÓVEL", f"R$ {d['v_total_imovel']:,.2f}", 95, True)
 
-    # 4. PAGAMENTO
     pdf.ln(2)
     pdf.seccao("CONDIÇÕES DE PAGAMENTO DA ENTRADA")
     pdf.set_font('Arial', 'B', 11)
@@ -90,10 +86,6 @@ def gerar_pdf_completo(d):
     pdf.multi_cell(190, 6, d['txt_pagamento'], 'B')
 
     pdf.ln(10)
-    pdf.set_font('Arial', 'I', 7)
-    pdf.multi_cell(190, 3, "Cláusula Compromissória: Todo litígio decorrente deste instrumento será decidido por arbitragem na 2ª Corte de Goiânia-GO (Lei 9.307/1996).")
-    
-    pdf.ln(10)
     pdf.set_font('Arial', 'B', 9)
     pdf.cell(190, 5, f"Goiânia, {datetime.now().strftime('%d/%m/%Y')}", 0, 1, 'R')
     
@@ -101,109 +93,109 @@ def gerar_pdf_completo(d):
     pdf.output(path)
     return path
 
-# --- LÓGICA DE INTERFACE ---
-st.sidebar.image("https://homebuy.com.br/wp-content/uploads/2021/08/logo-home-buy.png", width=150) # Use o link da sua logo real
-menu = st.sidebar.radio("Navegação", ["Área do Corretor", "Painel Admin"])
+# --- NAVEGAÇÃO ---
+st.sidebar.title("Menu")
+menu = st.sidebar.radio("Ir para:", ["Área do Corretor", "Painel Admin"])
 
-# --- INICIALIZAÇÃO DO BANCO DE DADOS ---
 if 'db' not in st.session_state:
     st.session_state['db'] = None
 
-# --- ÁREA ADMIN ---
+# --- PAINEL ADMIN ---
 if menu == "Painel Admin":
-    st.header("⚙️ Configurações de Sistema")
-    senha = st.text_input("Senha de Acesso", type="password")
+    st.header("⚙️ Painel do Administrador")
+    senha = st.text_input("Senha", type="password")
     if senha == "admin123":
-        st.success("Acesso Liberado")
-        uploaded_file = st.file_uploader("Atualizar Tabela de Preços (Excel)", type=['xlsx'])
+        uploaded_file = st.file_uploader("Subir Tabela de Preços (Excel)", type=['xlsx'])
         if uploaded_file:
             st.session_state['db'] = pd.read_excel(uploaded_file, skiprows=11)
-            st.info("Tabela carregada com sucesso!")
+            st.success("Tabela carregada!")
     elif senha != "":
-        st.error("Senha Incorreta")
+        st.error("Senha incorreta.")
 
-# --- ÁREA CORRETOR ---
+# --- ÁREA DO CORRETOR ---
 else:
-    st.header("📝 Gerador de Propostas - Home Buy")
+    st.header("📝 Gerador de Propostas")
     
     if st.session_state['db'] is None:
-        st.warning("⚠️ O Administrador ainda não subiu a tabela de preços.")
+        st.warning("⚠️ Administrador: Por favor, suba a tabela no Painel Admin.")
     else:
         df = st.session_state['db']
-        lotes = df[df[df.columns[0]].astype(str).str.contains('LOTE', case=False, na=False)]
+        # Ajuste exato das colunas baseado no seu pedido:
+        # Coluna 0: Lote | Coluna 2: Valor Negócio | Coluna 3: Intermediação | Coluna 4: Entrada Imóvel
+        col_lote = df.columns[0]
+        col_v_negocio = df.columns[2]
+        col_v_intermed = df.columns[3]
+        col_v_entrada_imovel = df.columns[4]
+
+        lotes = df[df[col_lote].astype(str).str.contains('LOTE', case=False, na=False)]
         
-        with st.form("proposta_form"):
-            col_a, col_b = st.columns([1, 1])
-            with col_a:
-                u = st.selectbox("Selecione a Unidade", lotes[df.columns[0]].unique())
-                
-                # BUSCA VALORES DA TABELA
-                dados = lotes[lotes[df.columns[0]] == u].iloc[0]
-                v_negocio = float(dados[df.columns[2]])
-                v_intermed = float(dados[df.columns[3]])
-                v_ent_imovel = float(dados[df.columns[4]])
-                entrada_sugerida = v_intermed + v_ent_imovel
+        with st.form("form_venda"):
+            u = st.selectbox("Unidade", lotes[col_lote].unique())
+            
+            # Recupera valores
+            dados = lotes[lotes[col_lote] == u].iloc[0]
+            v_negocio_val = float(dados[col_v_negocio])
+            v_intermed_val = float(dados[col_v_intermed])
+            v_ent_imovel_val = float(dados[col_v_entrada_imovel])
+            entrada_total_val = v_intermed_val + v_ent_imovel_val
 
-            st.subheader("👤 Dados do Proponente")
+            st.subheader("👤 Cliente")
             c1, c2 = st.columns(2)
-            nome = c1.text_input("Nome Completo")
-            cpf = c2.text_input("CPF (somente números)")
-
+            nome = c1.text_input("Nome")
+            cpf = c2.text_input("CPF")
+            
             c3, c4, c5 = st.columns(3)
             fone = c3.text_input("Celular")
-            f_fixo = c4.text_input("Telefone Fixo")
-            f_ref = c5.text_input("Telefone Referência")
-
-            c6, c7, c8 = st.columns(3)
+            f_fixo = c4.text_input("Fixo")
+            f_ref = c5.text_input("Referência")
+            
+            c6, c7 = st.columns(2)
             nac = c6.text_input("Nacionalidade", "Brasileiro")
             prof = c7.text_input("Profissão")
-            est_civil = st.selectbox("Estado Civil", ["Solteiro", "Casado", "Divorciado", "União Estável"])
             
-            c9, c10 = st.columns(2)
-            renda = c9.text_input("Renda Mensal (R$)")
+            c8, c9, c10 = st.columns(3)
+            est_civil = c8.selectbox("Estado Civil", ["Solteiro", "Casado", "Divorciado", "União Estável"])
+            renda = c9.text_input("Renda")
             email = c10.text_input("E-mail")
 
-            st.subheader("👥 Dados do Cônjuge")
+            st.subheader("👥 Cônjuge")
             cc1, cc2, cc3 = st.columns(3)
-            cnome = cc1.text_input("Nome do Cônjuge")
-            ccpf = cc2.text_input("CPF do Cônjuge")
-            crenda = cc3.text_input("Renda do Cônjuge")
+            cnome = cc1.text_input("Nome Cônjuge")
+            ccpf = cc2.text_input("CPF Cônjuge")
+            crenda = cc3.text_input("Renda Cônjuge")
 
-            st.subheader("💰 Plano Financeiro da Entrada")
-            # Aqui calcula a entrada real baseada na soma das colunas
-            v_entrada_input = st.number_input("Valor da Entrada Total (Intermediação + Entrada Imóvel)", value=float(entrada_sugerida))
-            num_parc = st.slider("Parcelar o SALDO da entrada em quantas vezes?", 1, 4, 1)
+            st.subheader("💰 Plano de Entrada")
+            # Entrada total puxando Intermediação + Entrada Imóvel
+            v_entrada_final = st.number_input("Valor da Entrada Total", value=entrada_total_val)
+            parcelas = st.slider("Parcelar saldo em (1 a 4x):", 1, 4, 1)
 
-            submit = st.form_submit_button("✨ GERAR PROPOSTA PROFISSIONAL")
-
-            if submit:
+            if st.form_submit_button("GERAR PROPOSTA"):
                 if not validar_cpf(cpf):
-                    st.error("❌ CPF do Proponente inválido!")
+                    st.error("CPF Inválido")
                 else:
-                    # LÓGICA FINANCEIRA REQUERIDA
-                    ato = v_negocio * 0.003
-                    saldo = v_entrada_input - ato
-                    v_parcela = saldo / num_parc if saldo > 0 else 0
+                    ato_val = v_negocio_val * 0.003
+                    saldo_val = v_entrada_final - ato_val
+                    v_parc_val = saldo_val / parcelas if saldo_val > 0 else 0
 
                     txt_pag = (
-                        f"O pagamento da entrada será realizado da seguinte forma:\n"
-                        f"- ATO (0,30% sobre o valor do negócio): R$ {ato:,.2f}\n"
-                        f"- SALDO DA ENTRADA: R$ {saldo:,.2f} parcelado em {num_parc}x de R$ {v_parcela:,.2f} mensais."
+                        f"Detalhamento:\n"
+                        f"- Ato (0,30% do negócio): R$ {ato_val:,.2f}\n"
+                        f"- Saldo: {parcelas}x de R$ {v_parc_val:,.2f} mensais."
                     )
 
-                    info_doc = {
+                    info = {
                         'nome': nome, 'cpf': cpf, 'fone': fone, 'fone_fixo': f_fixo, 'fone_ref': f_ref,
                         'nac': nac, 'prof': prof, 'est_civil': est_civil, 'renda': renda, 'email': email,
                         'cnome': cnome, 'ccpf': ccpf, 'crenda': crenda,
                         'loteamento': "RESIDENCIAL FREI GALVÃO", 'unidade': u,
-                        'v_negocio': v_negocio, 'v_intermed': v_intermed, 'v_ent_imovel': v_ent_imovel,
-                        'v_total_imovel': v_negocio - v_intermed, 'v_entrada_total': v_entrada_input,
-                        'txt_pagamento': txt_pag
+                        'v_negocio': v_negocio_val, 'v_intermed': v_intermed_val, 
+                        'v_ent_imovel': v_ent_imovel_val, 'v_total_imovel': v_negocio_val - v_intermed_val,
+                        'v_entrada_total': v_entrada_final, 'txt_pagamento': txt_pag
                     }
                     
-                    st.session_state['pdf_pronto'] = gerar_pdf_completo(info_doc)
-                    st.success("✅ Documento gerado com sucesso!")
+                    st.session_state['pdf_file'] = gerar_pdf_completo(info)
+                    st.success("✅ Gerado!")
 
-        if 'pdf_pronto' in st.session_state:
-            with open(st.session_state['pdf_pronto'], "rb") as f:
-                st.download_button("📥 BAIXAR PROPOSTA AGORA", f, file_name=st.session_state['pdf_pronto'], use_container_width=True)
+        if 'pdf_file' in st.session_state:
+            with open(st.session_state['pdf_file'], "rb") as f:
+                st.download_button("📥 Baixar PDF", f, file_name=st.session_state['pdf_file'], use_container_width=True)

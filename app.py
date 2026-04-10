@@ -4,129 +4,137 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 import os
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Home Buy - Gerador Oficial", layout="wide")
+# --- CONFIGURAÇÃO ---
+st.set_page_config(page_title="Home Buy Oficial", layout="wide")
+TEMPLATE_EXCEL = "PROPOSTA LOTEAMENTO HOME BUY.xlsx"
 
-ARQUIVO_MODELO = "PROPOSTA LOTEAMENTO HOME BUY (1).xlsx"
+if 'db_precos' not in st.session_state:
+    st.session_state['db_precos'] = None
 
-# Inicialização do estado
-if 'loteamentos' not in st.session_state:
-    st.session_state['loteamentos'] = None
-if 'arquivo_pronto' not in st.session_state:
-    st.session_state['arquivo_pronto'] = None
-
-# --- FUNÇÃO PARA ESCREVER EM CÉLULAS MESCLADAS ---
-def safe_write(ws, cell_coord, value):
-    cell = ws[cell_coord]
+# --- FUNÇÃO DE ESCRITA SEGURA (PARA CÉLULAS MESCLADAS) ---
+def write(ws, coord, valor):
+    cell = ws[coord]
     if isinstance(cell, MergedCell):
         for range_ in ws.merged_cells.ranges:
-            if cell_coord in range_:
-                ws.cell(range_.min_row, range_.min_col).value = value
+            if coord in range_:
+                ws.cell(range_.min_row, range_.min_col).value = valor
                 break
     else:
-        ws[cell_coord] = value
+        ws[coord] = valor
 
-def preencher_proposta_excel(dados):
-    wb = load_workbook(ARQUIVO_MODELO)
-    ws = wb.active
-
-    # Mapeamento conforme seu modelo original
-    safe_write(ws, 'B5', dados['nome'])
-    safe_write(ws, 'B6', dados['cpf'])
-    safe_write(ws, 'I6', dados['fone'])
-    safe_write(ws, 'B7', dados['nac'])
-    safe_write(ws, 'I7', dados['prof'])
-    safe_write(ws, 'B8', dados['est_civil'])
-    safe_write(ws, 'B9', dados['email'])
+def gerar_proposta_completa(d):
+    wb = load_workbook(TEMPLATE_EXCEL)
+    
+    # --- ABA 1: PROPOSTA ---
+    ws1 = wb["PROPOSTA"]
+    # Proponente
+    write(ws1, 'C5', d['nome'])
+    write(ws1, 'C6', d['cpf'])
+    write(ws1, 'I6', d['fone'])
+    write(ws1, 'O6', d['fone_fixo'])
+    write(ws1, 'C7', d['nac'])
+    write(ws1, 'I7', d['prof'])
+    write(ws1, 'O7', d['fone_ref'])
+    write(ws1, 'C8', d['est_civil'])
+    write(ws1, 'O8', d['renda'])
+    write(ws1, 'C9', d['email'])
     
     # Cônjuge
-    safe_write(ws, 'B11', dados['cnome'])
-    safe_write(ws, 'B12', dados['ccpf'])
-    
-    # Imóvel e Valores
-    safe_write(ws, 'C19', "RESIDENCIAL FREI GALVÃO")
-    safe_write(ws, 'I20', dados['unidade'])
-    safe_write(ws, 'C23', dados['valor_total'])
-    safe_write(ws, 'B25', dados['ato'])
-    safe_write(ws, 'G25', dados['comissao'])
+    write(ws1, 'C13', d['cnome'])
+    write(ws1, 'C14', d['ccpf'])
+    write(ws1, 'I14', d['cfone'])
+    write(ws1, 'C15', d['cnac'])
+    write(ws1, 'I15', d['cprof'])
+    write(ws1, 'O15', d['cfone_ref'])
+    write(ws1, 'O16', d['crenda'])
 
-    output_path = f"Proposta_{dados['unidade'].replace(' ', '_')}.xlsx"
-    wb.save(output_path)
-    return output_path
+    # Dados do Imóvel
+    write(ws1, 'C20', d['loteamento'])
+    write(ws1, 'J20', d['unidade'])
+    write(ws1, 'C22', d['valor_venda'])
+    write(ws1, 'I22', d['valor_comissao'])
+    write(ws1, 'C23', d['valor_imovel'])
+
+    # --- ABA 2: CONTRATO DE INTERMEDIAÇÃO ---
+    if "CONTRATO DE INTERMEDIAÇÃO" in wb.sheetnames:
+        ws2 = wb["CONTRATO DE INTERMEDIAÇÃO"]
+        write(ws2, 'B6', d['nome'])
+        write(ws2, 'I6', d['cpf'])
+        write(ws2, 'B7', d['cnome'])
+        write(ws2, 'I7', d['ccpf'])
+        write(ws2, 'B23', d['loteamento'])
+        write(ws2, 'J23', d['unidade'])
+        write(ws2, 'L25', d['valor_venda'])
+
+    output = f"Proposta_{d['unidade']}.xlsx"
+    wb.save(output)
+    return output
 
 # --- INTERFACE ---
-aba = st.sidebar.radio("Navegação", ["Vendas", "Admin"])
+menu = st.sidebar.radio("Navegação", ["Vendas", "Admin"])
 
-if aba == "Admin":
-    st.header("⚙️ Painel Administrativo")
-    senha = st.text_input("Senha", type="password")
-    if senha == "admin123":
-        arq = st.file_uploader("Suba a Tabela Frei Galvão", type=['xlsx'])
+if menu == "Admin":
+    st.header("⚙️ Gestão de Tabelas")
+    if st.text_input("Senha", type="password") == "admin123":
+        arq = st.file_uploader("Upload Tabela (Frei Galvão)", type=['xlsx'])
         if arq:
             df = pd.read_excel(arq, skiprows=11)
-            st.session_state['loteamentos'] = df.dropna(how='all', axis=1)
-            st.success("Tabela carregada!")
+            st.session_state['db_precos'] = df.dropna(how='all', axis=1)
+            st.success("Tabela integrada!")
 
 else:
-    st.header("📝 Preencher Proposta Home Buy")
+    st.header("📝 Nova Proposta Home Buy")
     
-    if st.session_state['loteamentos'] is None:
-        st.info("Aguardando upload da tabela no Admin.")
-    elif not os.path.exists(ARQUIVO_MODELO):
-        st.error(f"O arquivo {ARQUIVO_MODELO} não foi encontrado no GitHub!")
+    if st.session_state['db_precos'] is None:
+        st.info("Aguardando upload da tabela de preços no Admin.")
+    elif not os.path.exists(TEMPLATE_EXCEL):
+        st.error("Erro: O ficheiro template 'PROPOSTA LOTEAMENTO HOME BUY.xlsx' não está no GitHub.")
     else:
-        df = st.session_state['loteamentos']
-        cols = df.columns.tolist()
-        lotes = df[df[cols[0]].astype(str).str.contains('LOTE', case=False, na=False)]
+        df = st.session_state['db_precos']
+        lotes = df[df[df.columns[0]].astype(str).str.contains('LOTE', case=False, na=False)]
 
-        with st.form("main_form"):
-            unid = st.selectbox("Selecione o Lote", lotes[cols[0]].unique())
+        with st.form("proposta_form"):
+            st.subheader("1. Imóvel")
+            unid = st.selectbox("Unidade", lotes[df.columns[0]].unique())
             
-            c1, c2 = st.columns(2)
-            nome = c1.text_input("Nome Cliente")
+            st.subheader("2. Proponente")
+            c1, c2, c3 = st.columns(3)
+            nome = c1.text_input("Nome Completo")
             cpf = c2.text_input("CPF/CNPJ")
+            fone = c3.text_input("Celular")
             
-            c3, c4, c5 = st.columns(3)
-            nac = c3.text_input("Nacionalidade", "Brasileiro")
-            prof = c4.text_input("Profissão")
-            fone = c5.text_input("Celular")
+            c4, c5, c6 = st.columns(3)
+            nac = c4.text_input("Nacionalidade", "Brasileiro")
+            prof = c5.text_input("Profissão")
+            renda = c6.text_input("Renda Mensal")
             
-            email = st.text_input("E-mail")
-            est = st.selectbox("Estado Civil", ["Solteiro(a)", "Casado(a)", "Divorciado(a)", "União Estável"])
-            
-            st.write("---")
-            cnome = st.text_input("Nome Cônjuge")
-            ccpf = st.text_input("CPF Cônjuge")
+            c7, c8, c9 = st.columns(3)
+            est = st.selectbox("Estado Civil", ["Solteiro", "Casado", "União Estável", "Divorciado"])
+            email = c8.text_input("E-mail")
+            f_fixo = c9.text_input("Fone Fixo / Ref")
 
-            # O botão de formulário apenas PROCESSA os dados
-            gerar = st.form_submit_button("Preparar Proposta")
+            st.subheader("3. Cônjuge")
+            cc1, cc2, cc3 = st.columns(3)
+            cnome = cc1.text_input("Nome Cônjuge")
+            ccpf = cc2.text_input("CPF Cônjuge")
+            cfone = cc3.text_input("Celular Cônjuge")
 
-            if gerar:
-                dados_lote = lotes[lotes[cols[0]] == unid].iloc[0]
-                v_tot = float(dados_lote[cols[2]])
+            if st.form_submit_button("Gerar Documentos"):
+                dados_lote = lotes[lotes[df.columns[0]] == unid].iloc[0]
+                v_venda = float(dados_lote[df.columns[2]])
                 
                 info = {
-                    'nome': nome, 'cpf': cpf, 'fone': fone, 'nac': nac, 'prof': prof,
-                    'est_civil': est, 'email': email, 'cnome': cnome, 'ccpf': ccpf,
-                    'unidade': unid, 'valor_total': v_tot, 'ato': v_tot * 0.01,
-                    'comissao': v_tot * 0.053
+                    'nome': nome, 'cpf': cpf, 'fone': fone, 'fone_fixo': f_fixo,
+                    'nac': nac, 'prof': prof, 'fone_ref': 'Ver Anexo', 'est_civil': est,
+                    'renda': renda, 'email': email,
+                    'cnome': cnome, 'ccpf': ccpf, 'cfone': cfone, 'cnac': 'Brasileira',
+                    'cprof': '', 'cfone_ref': '', 'crenda': '',
+                    'loteamento': "RESIDENCIAL FREI GALVÃO", 'unidade': unid,
+                    'valor_venda': v_venda, 'valor_comissao': v_venda * 0.053,
+                    'valor_imovel': v_venda, 'valor_ato': v_venda * 0.01
                 }
-                
-                try:
-                    caminho = preencher_proposta_excel(info)
-                    # Guardamos o caminho no session_state
-                    st.session_state['arquivo_pronto'] = caminho
-                    st.session_state['unidade_gerada'] = unid
-                except Exception as e:
-                    st.error(f"Erro: {e}")
+                st.session_state['path'] = gerar_proposta_completa(info)
 
-        # O BOTÃO DE DOWNLOAD FICA FORA DO FORMULÁRIO
-        if st.session_state['arquivo_pronto']:
-            st.success(f"✅ Proposta da unidade {st.session_state['unidade_gerada']} pronta!")
-            with open(st.session_state['arquivo_pronto'], "rb") as f:
-                st.download_button(
-                    label="📥 BAIXAR AGORA (.xlsx)",
-                    data=f,
-                    file_name=f"Proposta_{st.session_state['unidade_gerada']}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+        if 'path' in st.session_state:
+            with open(st.session_state['path'], "rb") as f:
+                st.download_button("📥 BAIXAR PROPOSTA E CONTRATO (.XLSX)", f, file_name=st.session_state['path'])

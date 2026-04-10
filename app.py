@@ -48,6 +48,7 @@ class HomeBuyPDF(FPDF):
 def gerar_pdf_completo(d):
     pdf = HomeBuyPDF()
     pdf.add_page()
+    
     pdf.seccao("PROPONENTE / EMPRESA")
     pdf.campo("NOME", d['nome'], 190, True)
     pdf.campo("CPF/CNPJ", d['cpf'], 65)
@@ -104,15 +105,14 @@ if menu == "Painel Admin":
     st.header("⚙️ Painel do Administrador")
     senha = st.text_input("Senha", type="password")
     if senha == "admin123":
-        uploaded_file = st.file_uploader("Subir Tabela de Preços (Excel)", type=['xlsx'])
+        uploaded_file = st.file_uploader("Subir Tabela (Excel)", type=['xlsx'])
         if uploaded_file:
-            # Carrega os dados
+            # Lendo e limpando nomes de colunas (removendo espaços extras)
             temp_df = pd.read_excel(uploaded_file, skiprows=11)
-            # Remove colunas sem nome (Unamed)
-            temp_df = temp_df.loc[:, ~temp_df.columns.str.contains('^Unnamed')]
+            temp_df.columns = [str(c).strip() for c in temp_df.columns] 
             st.session_state['db'] = temp_df
-            st.success("Tabela carregada com sucesso!")
-            st.write("Colunas detectadas:", list(temp_df.columns))
+            st.success("Tabela carregada!")
+            st.write("Colunas encontradas:", list(temp_df.columns))
     elif senha != "":
         st.error("Senha incorreta.")
 
@@ -121,27 +121,23 @@ else:
     st.header("📝 Gerador de Propostas")
     
     if st.session_state['db'] is None:
-        st.warning("⚠️ Administrador: Por favor, suba a tabela no Painel Admin.")
+        st.warning("⚠️ Por favor, suba a tabela no Painel Admin primeiro.")
     else:
         df = st.session_state['db']
+        col_lote = df.columns[0]
+        lotes = df[df[col_lote].astype(str).str.contains('LOTE', case=False, na=False)]
         
-        # Filtra linhas que contenham "LOTE" na primeira coluna
-        lotes = df[df[df.columns[0]].astype(str).str.contains('LOTE', case=False, na=False)]
-        
-        with st.form("form_venda"):
-            u = st.selectbox("Selecione a Unidade", lotes[df.columns[0]].unique())
+        # O formulário deve envolver todos os inputs E o botão de submit
+        with st.form("meu_formulario_proposta"):
+            u = st.selectbox("Selecione a Unidade", lotes[col_lote].unique())
             
-            # BUSCA DINÂMICA PELO NOME DA COLUNA (MAIS SEGURO)
-            dados = lotes[lotes[df.columns[0]] == u].iloc[0]
+            dados = lotes[lotes[col_lote] == u].iloc[0]
             
-            try:
-                v_negocio_val = float(dados["Valor Negócio"])
-                v_intermed_val = float(dados["Intermediação"])
-                v_ent_imovel_val = float(dados["Entrada Imóvel"])
-                entrada_total_val = v_intermed_val + v_ent_imovel_val
-            except KeyError as e:
-                st.error(f"Erro: Não encontrei a coluna {e} na sua planilha. Verifique se o nome está exatamente igual.")
-                st.stop()
+            # Busca segura de colunas
+            v_negocio_val = float(dados.get("Valor Negócio", 0))
+            v_intermed_val = float(dados.get("Intermediação", 0))
+            v_ent_imovel_val = float(dados.get("Entrada Imóvel", 0))
+            entrada_total_val = v_intermed_val + v_ent_imovel_val
 
             st.subheader("👤 Cliente")
             c1, c2 = st.columns(2)
@@ -169,13 +165,17 @@ else:
             crenda = cc3.text_input("Renda Cônjuge")
 
             st.subheader("💰 Plano de Entrada")
-            # Agora a entrada total é a soma automática
-            v_entrada_final = st.number_input("Valor da Entrada Total (Intermediação + Entrada Imóvel)", value=entrada_total_val)
+            v_entrada_final = st.number_input("Valor da Entrada Total (Soma)", value=float(entrada_total_val))
             parcelas = st.slider("Parcelar saldo em (1 a 4x):", 1, 4, 1)
 
-            if st.form_submit_button("GERAR PROPOSTA"):
+            # O BOTÃO DEVE ESTAR DENTRO DO BLOCO 'WITH ST.FORM'
+            enviar = st.form_submit_button("🚀 GERAR PROPOSTA")
+
+            if enviar:
                 if not validar_cpf(cpf):
                     st.error("CPF Inválido")
+                elif v_negocio_val == 0:
+                    st.error("Erro: Valor do negócio não encontrado na planilha. Verifique o cabeçalho 'Valor Negócio'.")
                 else:
                     ato_val = v_negocio_val * 0.003
                     saldo_val = v_entrada_final - ato_val
@@ -198,7 +198,7 @@ else:
                     }
                     
                     st.session_state['pdf_file'] = gerar_pdf_completo(info)
-                    st.success("✅ Proposta gerada com sucesso!")
+                    st.success("✅ Proposta gerada!")
 
         if 'pdf_file' in st.session_state:
             with open(st.session_state['pdf_file'], "rb") as f:

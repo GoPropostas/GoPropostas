@@ -12,9 +12,17 @@ empreendimentos = {
     "Frei Galvão": {
         "proprietario": "Frei Galvão empreendimentos imobiliários",
         "nome": "Loteamento Frei Galvão",
-        "logradouro": "Avenida Fazenda Bananal"
+        "logradouro": "Avenida Fazenda Bananal",
+        "tabela": "tabela_frei_galvao.xlsx"
     }
 }
+
+# ---------------- CACHE TABELA ----------------
+@st.cache_data
+def carregar_tabela(arquivo):
+    df = pd.read_excel(arquivo, skiprows=11)
+    df.columns = df.columns.str.strip().str.lower()
+    return df
 
 # ---------------- LIMPEZA ----------------
 def limpar(valor):
@@ -68,7 +76,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["O8"] = d["renda"]
     ws["E9"] = d["email"]
 
-    # SEGUNDO
+    # SEGUNDO PROPONENTE
     ws["G11"] = d["nome2"]
     ws["D13"] = d["cpf2"]
     ws["J13"] = d["telefone2"]
@@ -90,7 +98,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    # TABELA PRINCIPAL
+    # TABELA
     ws["B24"] = 1
     ws["B25"] = 36
     ws["B26"] = 1
@@ -125,143 +133,136 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     return arquivo
 
 # ---------------- APP ----------------
-if 'df' not in st.session_state:
-    st.session_state['df'] = None
 
-menu = st.sidebar.radio("Menu", ["Admin", "Corretor"])
+st.sidebar.title("⚙️ Sistema")
 
-# ADMIN
-if menu == "Admin":
-    if st.text_input("Senha", type="password") == "admin123":
-        arq = st.file_uploader("Tabela de lotes", type=["xlsx"])
-        if arq:
-            df = pd.read_excel(arq, skiprows=11)
-            df.columns = df.columns.str.strip().str.lower()
-            st.session_state['df'] = df
-            st.success("Tabela carregada!")
+# BOTÃO ATUALIZAR
+if st.sidebar.button("🔄 Atualizar tabela"):
+    st.cache_data.clear()
+    st.success("Tabela atualizada!")
 
-# CORRETOR
-else:
-    if st.session_state['df'] is None:
-        st.warning("Envie a tabela primeiro")
-    else:
-        # EMPREENDIMENTO
-        st.subheader("🏢 Empreendimento")
-        emp_nome = st.selectbox("Selecione o empreendimento", list(empreendimentos.keys()))
-        emp = empreendimentos[emp_nome]
+# EMPREENDIMENTO
+st.subheader("🏢 Empreendimento")
+emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()))
+emp = empreendimentos[emp_nome]
 
-        df = st.session_state['df']
-        col = df.columns[0]
+# CARREGAR TABELA AUTOMÁTICA
+df = carregar_tabela(emp["tabela"])
 
-        unidade = st.selectbox("Lote", df[col].dropna().unique())
-        linha = df[df[col] == unidade].iloc[0]
+col = df.columns[0]
+unidade = st.selectbox("Lote", df[col].dropna().unique())
+linha = df[df[col] == unidade].iloc[0]
 
-        # VALORES
-        valor_negocio = buscar(linha, ["valor negócio"])
-        entrada_imovel = buscar(linha, ["entrada imovel"])
-        intermed = buscar(linha, ["intermediação"])
-        parcela_36 = buscar(linha, ["36x"])
-        saldo = buscar(linha, ["saldo"])
-        area = buscar(linha, ["área", "area"])
-        valor_imovel = buscar(linha, ["valor imóvel"])
+# VALORES
+valor_negocio = buscar(linha, ["valor negócio"])
+entrada_imovel = buscar(linha, ["entrada imovel"])
+intermed = buscar(linha, ["intermediação"])
+parcela_36 = buscar(linha, ["36x"])
+saldo = buscar(linha, ["saldo"])
+area = buscar(linha, ["área", "area"])
+valor_imovel = buscar(linha, ["valor imóvel"])
 
-        entrada_total = intermed + entrada_imovel
-        ato_min = valor_negocio * 0.003
+entrada_total = intermed + entrada_imovel
+ato_min = valor_negocio * 0.003
 
-        st.subheader("Cliente")
-        nome = st.text_input("Nome")
-        cpf = st.text_input("CPF")
-        telefone = st.text_input("Telefone")
-        fone_fixo = st.text_input("Fixo")
-        nacionalidade = st.text_input("Nacionalidade")
-        profissao = st.text_input("Profissão")
-        fone_pref = st.text_input("Fone preferência")
-        estado_civil = st.text_input("Estado civil")
-        renda = st.text_input("Renda")
-        email = st.text_input("Email")
+# CLIENTE
+st.subheader("Cliente")
+nome = st.text_input("Nome")
+cpf = st.text_input("CPF")
+telefone = st.text_input("Telefone")
+fone_fixo = st.text_input("Fixo")
+nacionalidade = st.text_input("Nacionalidade")
+profissao = st.text_input("Profissão")
+fone_pref = st.text_input("Fone preferência")
+estado_civil = st.text_input("Estado civil")
+renda = st.text_input("Renda")
+email = st.text_input("Email")
 
-        st.subheader("Entrada")
-        valor_cliente = st.number_input("Entrada do cliente")
+# ENTRADA
+st.subheader("Entrada")
+valor_cliente = st.number_input("Entrada do cliente")
 
-        ato = min(valor_cliente, ato_min)
-        restante = entrada_total - valor_cliente
-        if restante < 0:
-            restante = 0
+ato = min(valor_cliente, ato_min)
+restante = entrada_total - valor_cliente
+if restante < 0:
+    restante = 0
 
-        parcelas_ent = st.slider("Parcelar entrada", 1, 4, 1)
-        vl_parcela_ent = restante / parcelas_ent if parcelas_ent > 1 else 0
+parcelas_ent = st.slider("Parcelar entrada", 1, 4, 1)
+vl_parcela_ent = restante / parcelas_ent if parcelas_ent > 1 else 0
 
-        st.subheader("Datas")
-        data_venc = st.date_input("Vencimento")
-        data_parc = st.date_input("Parcelas 36x")
-        data_saldo = st.date_input("Saldo")
-        data_parc_ent = st.date_input("Parcelas entrada")
+# DATAS
+st.subheader("Datas")
+data_venc = st.date_input("Vencimento")
+data_parc = st.date_input("Parcelas 36x")
+data_saldo = st.date_input("Saldo")
+data_parc_ent = st.date_input("Parcelas entrada")
 
-        if st.button("GERAR PDF"):
-            try:
-                dados = {
-                    "nome": nome,
-                    "cpf": cpf,
-                    "telefone": telefone,
-                    "fone_fixo": fone_fixo,
-                    "nacionalidade": nacionalidade,
-                    "profissao": profissao,
-                    "fone_pref": fone_pref,
-                    "estado_civil": estado_civil,
-                    "renda": renda,
-                    "email": email,
+# GERAR
+if st.button("GERAR PDF"):
+    try:
+        dados = {
+            "nome": nome,
+            "cpf": cpf,
+            "telefone": telefone,
+            "fone_fixo": fone_fixo,
+            "nacionalidade": nacionalidade,
+            "profissao": profissao,
+            "fone_pref": fone_pref,
+            "estado_civil": estado_civil,
+            "renda": renda,
+            "email": email,
 
-                    "nome2": "",
-                    "cpf2": "",
-                    "telefone2": "",
-                    "fone_fixo2": "",
-                    "nacionalidade2": "",
-                    "profissao2": "",
-                    "fone_pref2": "",
-                    "estado_civil2": "",
-                    "renda2": "",
+            "nome2": "",
+            "cpf2": "",
+            "telefone2": "",
+            "fone_fixo2": "",
+            "nacionalidade2": "",
+            "profissao2": "",
+            "fone_pref2": "",
+            "estado_civil2": "",
+            "renda2": "",
 
-                    "proprietario": emp["proprietario"],
-                    "empreendimento": emp["nome"],
-                    "logradouro": emp["logradouro"],
-                    "unidade": unidade,
-                    "area": area,
+            "proprietario": emp["proprietario"],
+            "empreendimento": emp["nome"],
+            "logradouro": emp["logradouro"],
+            "unidade": unidade,
+            "area": area,
 
-                    "valor_negocio": valor_negocio,
-                    "entrada_total": entrada_total,
-                    "valor_imovel": valor_imovel,
-                    "entrada_imovel": entrada_imovel,
-                    "parcela_36": parcela_36,
-                    "saldo": saldo,
+            "valor_negocio": valor_negocio,
+            "entrada_total": entrada_total,
+            "valor_imovel": valor_imovel,
+            "entrada_imovel": entrada_imovel,
+            "parcela_36": parcela_36,
+            "saldo": saldo,
 
-                    "data_venc": data_venc.strftime("%d/%m/%Y"),
-                    "data_parc": data_parc.strftime("%d/%m/%Y"),
-                    "data_saldo": data_saldo.strftime("%d/%m/%Y"),
-                    "data_parc_ent": data_parc_ent.strftime("%d/%m/%Y"),
+            "data_venc": data_venc.strftime("%d/%m/%Y"),
+            "data_parc": data_parc.strftime("%d/%m/%Y"),
+            "data_saldo": data_saldo.strftime("%d/%m/%Y"),
+            "data_parc_ent": data_parc_ent.strftime("%d/%m/%Y"),
 
-                    "ato": ato,
-                    "parcelas_ent": parcelas_ent,
-                    "vl_parcela_ent": vl_parcela_ent
-                }
+            "ato": ato,
+            "parcelas_ent": parcelas_ent,
+            "vl_parcela_ent": vl_parcela_ent
+        }
 
-                excel_file = preencher_proposta(dados)
-                pdf_file = excel_para_pdf(excel_file)
+        excel_file = preencher_proposta(dados)
+        pdf_file = excel_para_pdf(excel_file)
 
-                if os.path.exists(pdf_file):
-                    nome_arquivo = f"Proposta_{unidade.replace(' ', '_')}.pdf"
+        if os.path.exists(pdf_file):
+            nome_arquivo = f"Proposta_{unidade.replace(' ', '_')}.pdf"
 
-                    with open(pdf_file, "rb") as f:
-                        st.download_button(
-                            "📥 Baixar PDF",
-                            f,
-                            file_name=nome_arquivo,
-                            mime="application/pdf"
-                        )
+            with open(pdf_file, "rb") as f:
+                st.download_button(
+                    "📥 Baixar PDF",
+                    f,
+                    file_name=nome_arquivo,
+                    mime="application/pdf"
+                )
 
-                    st.success("✅ Proposta gerada!")
+            st.success("✅ Proposta gerada!")
 
-                else:
-                    st.error("❌ PDF não foi gerado")
+        else:
+            st.error("❌ PDF não foi gerado")
 
-            except Exception as e:
-                st.error(f"Erro: {e}")
+    except Exception as e:
+        st.error(f"Erro: {e}")

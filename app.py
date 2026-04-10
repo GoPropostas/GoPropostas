@@ -59,7 +59,7 @@ def gerar_pdf(d):
     pdf.ln(2)
     pdf.seccao("CONDIÇÕES DE PAGAMENTO")
     pdf.set_font('Arial', 'B', 11)
-    pdf.cell(190, 8, f"TOTAL DA ENTRADA: R$ {d['v_entrada_total']:,.2f}", 0, 1)
+    pdf.cell(190, 8, f"VALOR TOTAL DA ENTRADA: R$ {d['v_entrada_total']:,.2f}", 0, 1)
     pdf.set_font('Arial', '', 10)
     pdf.multi_cell(190, 6, d['txt_pagamento'], 'B')
     path = f"Proposta_{d['unidade'].replace(' ', '_')}.pdf"
@@ -89,66 +89,67 @@ else:
         col_lote = df.columns[0]
         lotes = df[df[col_lote].astype(str).str.contains('LOTE', case=False, na=False)]
 
+        # 1. ESCOLHA DA UNIDADE (FORA DO FORM PARA CALCULAR NA HORA)
         u = st.selectbox("Selecione a Unidade", lotes[col_lote].unique())
         dados = lotes[lotes[col_lote] == u].iloc[0]
 
-        # 1. PEGA OS VALORES DAS COLUNAS CORRETAS
+        # 2. CAPTURA DOS VALORES DAS COLUNAS (COM LIMPEZA)
         v_negocio = para_float(dados.get("Valor Negócio", 0))
         v_intermed = para_float(dados.get("Intermediação", 0))
         v_ent_imov = para_float(dados.get("Entrada Imóvel", 0))
         
-        # 2. CALCULA A SOMA DA ENTRADA (Sempre atualiza quando muda o lote)
-        soma_entrada_real = v_intermed + v_ent_imov
+        # 3. SOMA AUTOMÁTICA DA ENTRADA
+        soma_entrada_final = v_intermed + v_ent_imov
 
-        with st.form("form_venda_v3"):
-            st.subheader(f"📍 Unidade: {u}")
+        # 4. PAINEL DE CONFERÊNCIA (SEM FAIXA BRANCA, USANDO MÉTRICAS)
+        st.write("### 📊 Resumo Financeiro da Unidade")
+        c_a, c_b, c_c = st.columns(3)
+        c_a.metric("Valor Negócio", f"R$ {v_negocio:,.2f}")
+        c_b.metric("Intermediação", f"R$ {v_intermed:,.2f}")
+        c_c.metric("Entrada Imóvel", f"R$ {v_ent_imov:,.2f}")
+        
+        st.success(f"💰 **ENTRADA TOTAL CALCULADA:** R$ {soma_entrada_final:,.2f}")
+        st.write("---")
+
+        with st.form("form_venda_final"):
+            st.subheader("👤 Dados do Cliente")
             c1, c2 = st.columns(2)
             nome = c1.text_input("Nome Cliente")
             cpf = c2.text_input("CPF")
             fone = st.text_input("Telefone")
 
-            st.divider()
-            st.subheader("💰 Plano Financeiro")
-            
-            # Campo de entrada total já inicia com a soma de (Intermed + Entrada Imóvel)
-            v_entrada_total = st.number_input("Valor da Entrada Total (Confirmar)", value=soma_entrada_real, key=f"v_ent_{u}")
-            parc = st.slider("Parcelar saldo da entrada em:", 1, 4, 1)
+            st.subheader("💳 Condições da Entrada")
+            # Este campo puxa o valor da soma automaticamente
+            v_entrada_user = st.number_input("Confirmar Valor da Entrada", value=soma_entrada_final, key=f"ent_{u}")
+            num_parc = st.slider("Parcelar o restante em:", 1, 4, 1)
 
-            # --- CÁLCULOS DE CONFERÊNCIA ---
+            # Cálculos das parcelas
             ato_calc = v_negocio * 0.003
-            # O Saldo para parcelar usa o valor do campo "Entrada Total" menos o Ato
-            saldo_para_parc = v_entrada_total - ato_calc
-            valor_da_parc = saldo_para_parc / parc if saldo_para_parc > 0 else 0
+            saldo_parc = v_entrada_user - ato_calc
+            valor_da_parcela = saldo_parc / num_parc if saldo_parc > 0 else 0
 
-            # --- PAINEL DE CONFERÊNCIA (NATIVO, SEM FAIXA BRANCA) ---
-            st.write("---")
-            st.write("### 🔍 Conferência de Valores")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Valor Negócio", f"R$ {v_negocio:,.2f}")
-            m2.metric("Ato (0,30%)", f"R$ {ato_calc:,.2f}")
-            m3.metric("Entrada Total", f"R$ {v_entrada_total:,.2f}")
-            
-            m4, m5 = st.columns(2)
-            m4.metric("Saldo a Parcelar", f"R$ {saldo_para_parc:,.2f}")
-            m5.metric("Valor da Parcela", f"R$ {valor_da_parc:,.2f}")
-            st.write("---")
+            st.info(f"O cálculo será: Ato de R$ {ato_calc:,.2f} + {num_parc} parcelas de R$ {valor_da_parcela:,.2f}")
 
-            if st.form_submit_button("🚀 GERAR PDF"):
+            if st.form_submit_button("🚀 GERAR PROPOSTA"):
                 if not nome or not cpf:
                     st.error("Preencha os dados do cliente.")
                 else:
-                    detalhes_pag = (f"Pagamento da entrada:\n"
-                                   f"- Ato (0,30% sobre negócio): R$ {ato_calc:,.2f}\n"
-                                   f"- Saldo da entrada: R$ {saldo_para_parc:,.2f} em {parc}x de R$ {valor_da_parc:,.2f} mensais.")
+                    texto_pagamento = (
+                        f"O pagamento da entrada será realizado da seguinte forma:\n"
+                        f"- ATO (0,30% sobre o Valor do Negócio): R$ {ato_calc:,.2f}\n"
+                        f"- SALDO DA ENTRADA: R$ {saldo_parc:,.2f} parcelado em {num_parc}x de R$ {valor_da_parcela:,.2f} mensais."
+                    )
 
                     info_pdf = {
                         'nome': nome, 'cpf': cpf, 'fone': fone, 'unidade': u,
-                        'v_negocio': v_negocio, 'v_intermed': v_intermed,
-                        'v_entrada_total': v_entrada_total, 'txt_pagamento': detalhes_pag
+                        'v_negocio': v_negocio, 'v_entrada_total': v_entrada_user,
+                        'v_intermed': v_intermed, 'v_ent_imovel': v_ent_imov,
+                        'txt_pagamento': texto_pagamento
                     }
+                    
                     st.session_state['pdf_gerado'] = gerar_pdf(info_pdf)
-                    st.success("PDF Criado!")
+                    st.success("✅ Proposta gerada com os valores conferidos!")
 
         if 'pdf_gerado' in st.session_state:
             with open(st.session_state['pdf_gerado'], "rb") as f:
-                st.download_button("📥 Baixar Proposta", f, file_name=st.session_state['pdf_gerado'])
+                st.download_button("📥 Baixar PDF Agora", f, file_name=st.session_state['pdf_gerado'], use_container_width=True)

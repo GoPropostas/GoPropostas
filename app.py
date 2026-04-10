@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from openpyxl import load_workbook
-import win32com.client
+import subprocess
 import os
 from datetime import datetime
 
@@ -22,6 +22,20 @@ def buscar(linha, nomes):
         if n in linha.index:
             return limpar(linha[n])
     return 0.0
+
+# ---------------- PDF (LIBREOFFICE) ----------------
+def excel_para_pdf(arquivo_excel):
+    pasta = os.path.dirname(os.path.abspath(arquivo_excel))
+
+    subprocess.run([
+        "libreoffice",
+        "--headless",
+        "--convert-to", "pdf",
+        arquivo_excel,
+        "--outdir", pasta
+    ])
+
+    return arquivo_excel.replace(".xlsx", ".pdf")
 
 # ---------------- PREENCHER EXCEL ----------------
 def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
@@ -97,19 +111,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb.save(arquivo)
     return arquivo
 
-# ---------------- PDF ----------------
-def excel_para_pdf(arq):
-    excel = win32com.client.Dispatch("Excel.Application")
-    excel.Visible = False
-
-    wb = excel.Workbooks.Open(os.path.abspath(arq))
-    pdf = "proposta.pdf"
-    wb.ExportAsFixedFormat(0, os.path.abspath(pdf))
-
-    wb.Close()
-    excel.Quit()
-    return pdf
-
 # ---------------- APP ----------------
 if 'df' not in st.session_state:
     st.session_state['df'] = None
@@ -160,17 +161,6 @@ else:
         renda = st.text_input("Renda")
         email = st.text_input("Email")
 
-        st.subheader("2º Proponente")
-        nome2 = st.text_input("Nome 2")
-        cpf2 = st.text_input("CPF 2")
-        telefone2 = st.text_input("Telefone 2")
-        fone_fixo2 = st.text_input("Fixo 2")
-        nacionalidade2 = st.text_input("Nacionalidade 2")
-        profissao2 = st.text_input("Profissão 2")
-        fone_pref2 = st.text_input("Fone preferência 2")
-        estado_civil2 = st.text_input("Estado civil 2")
-        renda2 = st.text_input("Renda 2")
-
         st.subheader("Entrada")
         valor_cliente = st.number_input("Entrada do cliente")
 
@@ -189,15 +179,26 @@ else:
 
         if st.button("GERAR PDF"):
             dados = {
-                "nome": nome, "cpf": cpf, "telefone": telefone,
-                "fone_fixo": fone_fixo, "nacionalidade": nacionalidade,
-                "profissao": profissao, "fone_pref": fone_pref,
-                "estado_civil": estado_civil, "renda": renda, "email": email,
+                "nome": nome,
+                "cpf": cpf,
+                "telefone": telefone,
+                "fone_fixo": fone_fixo,
+                "nacionalidade": nacionalidade,
+                "profissao": profissao,
+                "fone_pref": fone_pref,
+                "estado_civil": estado_civil,
+                "renda": renda,
+                "email": email,
 
-                "nome2": nome2, "cpf2": cpf2, "telefone2": telefone2,
-                "fone_fixo2": fone_fixo2, "nacionalidade2": nacionalidade2,
-                "profissao2": profissao2, "fone_pref2": fone_pref2,
-                "estado_civil2": estado_civil2, "renda2": renda2,
+                "nome2": "",
+                "cpf2": "",
+                "telefone2": "",
+                "fone_fixo2": "",
+                "nacionalidade2": "",
+                "profissao2": "",
+                "fone_pref2": "",
+                "estado_civil2": "",
+                "renda2": "",
 
                 "proprietario": "HOME BUY",
                 "empreendimento": "EMPREENDIMENTO",
@@ -226,4 +227,4 @@ else:
             pdf = excel_para_pdf(excel)
 
             with open(pdf, "rb") as f:
-                st.download_button("Baixar PDF", f)
+                st.download_button("📥 Baixar PDF", f)

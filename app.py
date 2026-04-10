@@ -1,152 +1,229 @@
 import streamlit as st
 import pandas as pd
-from fpdf import FPDF
+from openpyxl import load_workbook
+import win32com.client
+import os
+from datetime import datetime
 
-# --- LIMPEZA DE VALORES ---
-def limpar_e_converter(valor):
+st.set_page_config(layout="wide")
+
+# ---------------- LIMPEZA ----------------
+def limpar(valor):
     if pd.isna(valor): return 0.0
     if isinstance(valor, (int, float)): return float(valor)
-    texto = str(valor).replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+    texto = str(valor).replace('R$', '').replace('.', '').replace(',', '.')
     try:
         return float(texto)
     except:
         return 0.0
 
-# --- BUSCAR COLUNA FLEXÍVEL ---
-def buscar_coluna(linha, nomes):
-    for nome in nomes:
-        if nome in linha.index:
-            return limpar_e_converter(linha[nome])
+def buscar(linha, nomes):
+    for n in nomes:
+        if n in linha.index:
+            return limpar(linha[n])
     return 0.0
 
-# --- PDF ---
-class PDF(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 12)
-        self.cell(190, 10, 'PROPOSTA DE COMPRA', 0, 1, 'C')
+# ---------------- PREENCHER EXCEL ----------------
+def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 
-def gerar_pdf(d):
-    pdf = PDF()
-    pdf.add_page()
-    pdf.set_font('Arial', '', 10)
+    wb = load_workbook(modelo)
+    ws = wb.active
 
-    pdf.cell(190, 8, f"Unidade: {d['unidade']}", 0, 1)
-    pdf.cell(190, 8, f"Valor Negócio: R$ {d['v_negocio']:,.2f}", 0, 1)
-    pdf.cell(190, 8, f"Entrada Total: R$ {d['entrada_total']:,.2f}", 0, 1)
-    pdf.cell(190, 8, f"Ato (dentro da entrada): R$ {d['ato']:,.2f}", 0, 1)
-    pdf.cell(190, 8, f"Entrada Restante: R$ {d['entrada_restante']:,.2f}", 0, 1)
-    pdf.cell(190, 8, f"{d['parcelas']}x de R$ {d['valor_parcela']:,.2f}", 0, 1)
-    pdf.cell(190, 8, f"Parcelas 36x: R$ {d['parcela_36']:,.2f}", 0, 1)
-    pdf.cell(190, 8, f"Saldo Devedor: R$ {d['saldo']:,.2f}", 0, 1)
+    # CLIENTE
+    ws["E5"] = d["nome"]
+    ws["D6"] = d["cpf"]
+    ws["J6"] = d["telefone"]
+    ws["O6"] = d["fone_fixo"]
+    ws["D7"] = d["nacionalidade"]
+    ws["J7"] = d["profissao"]
+    ws["P7"] = d["fone_pref"]
+    ws["D8"] = d["estado_civil"]
+    ws["O8"] = d["renda"]
+    ws["E9"] = d["email"]
 
-    path = "proposta.pdf"
-    pdf.output(path)
-    return path
+    # SEGUNDO
+    ws["G11"] = d["nome2"]
+    ws["D13"] = d["cpf2"]
+    ws["J13"] = d["telefone2"]
+    ws["O13"] = d["fone_fixo2"]
+    ws["D14"] = d["nacionalidade2"]
+    ws["J14"] = d["profissao2"]
+    ws["P14"] = d["fone_pref2"]
+    ws["D15"] = d["estado_civil2"]
+    ws["O15"] = d["renda2"]
 
-# --- CONFIG APP ---
-st.set_page_config(layout="wide")
+    # EMPREENDIMENTO
+    ws["G18"] = d["proprietario"]
+    ws["G19"] = d["empreendimento"]
+    ws["C20"] = d["logradouro"]
+    ws["I20"] = d["unidade"]
+    ws["Q20"] = d["area"]
 
-if 'db' not in st.session_state:
-    st.session_state['db'] = None
+    ws["C21"] = d["valor_negocio"]
+    ws["J21"] = d["entrada_total"]
+    ws["O21"] = d["valor_imovel"]
 
-menu = st.sidebar.radio("Menu", ["Corretor", "Admin"])
+    # TABELA
+    ws["B24"] = 1
+    ws["B25"] = 36
+    ws["B26"] = 1
 
-# --- ADMIN ---
+    ws["C24"] = d["entrada_imovel"]
+    ws["C25"] = d["parcela_36"]
+    ws["C26"] = d["saldo"]
+
+    ws["G24"] = "Única"
+    ws["G25"] = "Mensal"
+    ws["G26"] = "Única"
+
+    ws["K24"] = d["data_venc"]
+    ws["K25"] = d["data_parc"]
+    ws["K26"] = d["data_saldo"]
+
+    # ENTRADA
+    ws["B33"] = 1
+    ws["B34"] = d["parcelas_ent"] if d["parcelas_ent"] > 1 else ""
+
+    ws["C33"] = d["ato"]
+    ws["C34"] = d["vl_parcela_ent"] if d["parcelas_ent"] > 1 else ""
+
+    ws["G33"] = "Única"
+    ws["G34"] = "Mensal" if d["parcelas_ent"] > 1 else ""
+
+    ws["K33"] = datetime.today().strftime("%d/%m/%Y")
+    ws["K34"] = d["data_parc_ent"] if d["parcelas_ent"] > 1 else ""
+
+    arquivo = "proposta.xlsx"
+    wb.save(arquivo)
+    return arquivo
+
+# ---------------- PDF ----------------
+def excel_para_pdf(arq):
+    excel = win32com.client.Dispatch("Excel.Application")
+    excel.Visible = False
+
+    wb = excel.Workbooks.Open(os.path.abspath(arq))
+    pdf = "proposta.pdf"
+    wb.ExportAsFixedFormat(0, os.path.abspath(pdf))
+
+    wb.Close()
+    excel.Quit()
+    return pdf
+
+# ---------------- APP ----------------
+if 'df' not in st.session_state:
+    st.session_state['df'] = None
+
+menu = st.sidebar.radio("Menu", ["Admin", "Corretor"])
+
+# ADMIN
 if menu == "Admin":
-    st.header("⚙️ Upload da Tabela")
-
     if st.text_input("Senha", type="password") == "admin123":
-        arquivo = st.file_uploader("Enviar Excel", type=['xlsx'])
-
-        if arquivo:
-            df = pd.read_excel(arquivo, skiprows=11)
-
-            # LIMPAR COLUNAS
-            df.columns = (
-                df.columns.astype(str)
-                .str.strip()
-                .str.lower()
-                .str.replace('\n', ' ')
-            )
-
-            st.session_state['db'] = df
+        arq = st.file_uploader("Tabela de lotes", type=["xlsx"])
+        if arq:
+            df = pd.read_excel(arq, skiprows=11)
+            df.columns = df.columns.str.strip().str.lower()
+            st.session_state['df'] = df
             st.success("Tabela carregada!")
 
-# --- CORRETOR ---
+# CORRETOR
 else:
-    st.header("📝 Gerador de Propostas")
-
-    if st.session_state['db'] is None:
-        st.info("Envie a tabela no modo Admin")
+    if st.session_state['df'] is None:
+        st.warning("Envie a tabela primeiro")
     else:
-        df = st.session_state['db']
+        df = st.session_state['df']
+        col = df.columns[0]
 
-        col_lote = df.columns[0]
-        lotes = df[df[col_lote].notna()]
+        unidade = st.selectbox("Lote", df[col].dropna().unique())
+        linha = df[df[col] == unidade].iloc[0]
 
-        unidade = st.selectbox("Selecione o Lote", lotes[col_lote].unique())
-        linha = lotes[lotes[col_lote] == unidade].iloc[0]
+        valor_negocio = buscar(linha, ["valor negócio"])
+        entrada_imovel = buscar(linha, ["entrada imóvel"])
+        intermed = buscar(linha, ["intermediação"])
+        parcela_36 = buscar(linha, ["36x"])
+        saldo = buscar(linha, ["saldo"])
+        area = buscar(linha, ["area"])
+        valor_imovel = buscar(linha, ["valor imóvel"])
 
-        # --- DADOS DA PLANILHA ---
-        valor_negocio = buscar_coluna(linha, ["valor negócio", "valor negocio"])
-        intermed = buscar_coluna(linha, ["intermediação", "intermediacao"])
-        entrada_imovel = buscar_coluna(linha, ["entrada imóvel", "entrada imovel"])
-        parcela_36 = buscar_coluna(linha, ["36x", "parcela 36x"])
-        saldo = buscar_coluna(linha, ["saldo", "saldo devedor"])
-
-        # --- CÁLCULOS BASE ---
         entrada_total = intermed + entrada_imovel
-        ato_minimo = valor_negocio * 0.003
+        ato_min = valor_negocio * 0.003
 
-        st.subheader("📊 Dados do Lote")
-        st.write(f"Valor Negócio: R$ {valor_negocio:,.2f}")
-        st.write(f"Entrada Total (já com ato): R$ {entrada_total:,.2f}")
-        st.write(f"Ato mínimo (0,30%): R$ {ato_minimo:,.2f}")
+        st.subheader("Cliente")
+        nome = st.text_input("Nome")
+        cpf = st.text_input("CPF")
+        telefone = st.text_input("Telefone")
+        fone_fixo = st.text_input("Fixo")
+        nacionalidade = st.text_input("Nacionalidade")
+        profissao = st.text_input("Profissão")
+        fone_pref = st.text_input("Fone preferência")
+        estado_civil = st.text_input("Estado civil")
+        renda = st.text_input("Renda")
+        email = st.text_input("Email")
 
-        st.divider()
+        st.subheader("2º Proponente")
+        nome2 = st.text_input("Nome 2")
+        cpf2 = st.text_input("CPF 2")
+        telefone2 = st.text_input("Telefone 2")
+        fone_fixo2 = st.text_input("Fixo 2")
+        nacionalidade2 = st.text_input("Nacionalidade 2")
+        profissao2 = st.text_input("Profissão 2")
+        fone_pref2 = st.text_input("Fone preferência 2")
+        estado_civil2 = st.text_input("Estado civil 2")
+        renda2 = st.text_input("Renda 2")
 
-        # --- INPUT CLIENTE ---
-        valor_cliente = st.number_input("Valor que o cliente quer dar de entrada", min_value=0.0)
+        st.subheader("Entrada")
+        valor_cliente = st.number_input("Entrada do cliente")
 
-        # --- LÓGICA CORRETA (ATO EMBUTIDO) ---
-        ato = min(valor_cliente, ato_minimo)
+        ato = min(valor_cliente, ato_min)
+        restante = entrada_total - valor_cliente
+        if restante < 0: restante = 0
 
-        entrada_restante = entrada_total - valor_cliente
-        if entrada_restante < 0:
-            entrada_restante = 0
+        parcelas_ent = st.slider("Parcelar entrada", 1, 4, 1)
+        vl_parcela_ent = restante / parcelas_ent if parcelas_ent > 1 else 0
 
-        parcelas = st.slider("Parcelar restante da entrada", 1, 4, 1)
+        st.subheader("Datas")
+        data_venc = st.date_input("Vencimento")
+        data_parc = st.date_input("Parcelas 36x")
+        data_saldo = st.date_input("Saldo")
+        data_parc_ent = st.date_input("Parcelas entrada")
 
-        valor_parcela = entrada_restante / parcelas if entrada_restante > 0 else 0
-
-        # --- VISUAL ---
-        st.divider()
-        st.subheader("📋 Simulação")
-
-        st.write(f"💰 Cliente pagou: R$ {valor_cliente:,.2f}")
-        st.write(f"📌 Ato (dentro do valor): R$ {ato:,.2f}")
-        st.write(f"📊 Entrada restante: R$ {entrada_restante:,.2f}")
-        st.write(f"📅 {parcelas}x de R$ {valor_parcela:,.2f}")
-
-        st.write("---")
-        st.write(f"📆 Parcelas 36x (tabela): R$ {parcela_36:,.2f}")
-        st.write(f"🏦 Saldo Devedor: R$ {saldo:,.2f}")
-
-        # --- GERAR PDF ---
-        if st.button("📄 Gerar Proposta"):
+        if st.button("GERAR PDF"):
             dados = {
+                "nome": nome, "cpf": cpf, "telefone": telefone,
+                "fone_fixo": fone_fixo, "nacionalidade": nacionalidade,
+                "profissao": profissao, "fone_pref": fone_pref,
+                "estado_civil": estado_civil, "renda": renda, "email": email,
+
+                "nome2": nome2, "cpf2": cpf2, "telefone2": telefone2,
+                "fone_fixo2": fone_fixo2, "nacionalidade2": nacionalidade2,
+                "profissao2": profissao2, "fone_pref2": fone_pref2,
+                "estado_civil2": estado_civil2, "renda2": renda2,
+
+                "proprietario": "HOME BUY",
+                "empreendimento": "EMPREENDIMENTO",
+                "logradouro": "ENDEREÇO",
                 "unidade": unidade,
-                "v_negocio": valor_negocio,
+                "area": area,
+
+                "valor_negocio": valor_negocio,
                 "entrada_total": entrada_total,
-                "ato": ato,
-                "entrada_restante": entrada_restante,
-                "parcelas": parcelas,
-                "valor_parcela": valor_parcela,
+                "valor_imovel": valor_imovel,
+                "entrada_imovel": entrada_imovel,
                 "parcela_36": parcela_36,
-                "saldo": saldo
+                "saldo": saldo,
+
+                "data_venc": data_venc.strftime("%d/%m/%Y"),
+                "data_parc": data_parc.strftime("%d/%m/%Y"),
+                "data_saldo": data_saldo.strftime("%d/%m/%Y"),
+                "data_parc_ent": data_parc_ent.strftime("%d/%m/%Y"),
+
+                "ato": ato,
+                "parcelas_ent": parcelas_ent,
+                "vl_parcela_ent": vl_parcela_ent
             }
 
-            caminho = gerar_pdf(dados)
+            excel = preencher_proposta(dados)
+            pdf = excel_para_pdf(excel)
 
-            with open(caminho, "rb") as f:
-                st.download_button("📥 Baixar PDF", f, file_name="proposta.pdf")
+            with open(pdf, "rb") as f:
+                st.download_button("Baixar PDF", f)

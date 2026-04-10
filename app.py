@@ -23,7 +23,7 @@ def buscar(linha, nomes):
             return limpar(linha[n])
     return 0.0
 
-# ---------------- PDF (LIBREOFFICE) ----------------
+# ---------------- PDF ----------------
 def excel_para_pdf(arquivo_excel):
     pasta = os.path.dirname(os.path.abspath(arquivo_excel))
 
@@ -40,6 +40,9 @@ def excel_para_pdf(arquivo_excel):
 # ---------------- PREENCHER EXCEL ----------------
 def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 
+    if not os.path.exists(modelo):
+        raise FileNotFoundError(f"Arquivo não encontrado: {modelo}")
+
     wb = load_workbook(modelo)
     ws = wb.active
 
@@ -55,7 +58,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["O8"] = d["renda"]
     ws["E9"] = d["email"]
 
-    # SEGUNDO
+    # SEGUNDO PROPONENTE
     ws["G11"] = d["nome2"]
     ws["D13"] = d["cpf2"]
     ws["J13"] = d["telefone2"]
@@ -94,7 +97,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["K25"] = d["data_parc"]
     ws["K26"] = d["data_saldo"]
 
-    # ENTRADA
+    # ENTRADA PERSONALIZADA
     ws["B33"] = 1
     ws["B34"] = d["parcelas_ent"] if d["parcelas_ent"] > 1 else ""
 
@@ -166,7 +169,8 @@ else:
 
         ato = min(valor_cliente, ato_min)
         restante = entrada_total - valor_cliente
-        if restante < 0: restante = 0
+        if restante < 0:
+            restante = 0
 
         parcelas_ent = st.slider("Parcelar entrada", 1, 4, 1)
         vl_parcela_ent = restante / parcelas_ent if parcelas_ent > 1 else 0
@@ -178,53 +182,70 @@ else:
         data_parc_ent = st.date_input("Parcelas entrada")
 
         if st.button("GERAR PDF"):
-            dados = {
-                "nome": nome,
-                "cpf": cpf,
-                "telefone": telefone,
-                "fone_fixo": fone_fixo,
-                "nacionalidade": nacionalidade,
-                "profissao": profissao,
-                "fone_pref": fone_pref,
-                "estado_civil": estado_civil,
-                "renda": renda,
-                "email": email,
+            try:
+                dados = {
+                    "nome": nome,
+                    "cpf": cpf,
+                    "telefone": telefone,
+                    "fone_fixo": fone_fixo,
+                    "nacionalidade": nacionalidade,
+                    "profissao": profissao,
+                    "fone_pref": fone_pref,
+                    "estado_civil": estado_civil,
+                    "renda": renda,
+                    "email": email,
 
-                "nome2": "",
-                "cpf2": "",
-                "telefone2": "",
-                "fone_fixo2": "",
-                "nacionalidade2": "",
-                "profissao2": "",
-                "fone_pref2": "",
-                "estado_civil2": "",
-                "renda2": "",
+                    "nome2": "",
+                    "cpf2": "",
+                    "telefone2": "",
+                    "fone_fixo2": "",
+                    "nacionalidade2": "",
+                    "profissao2": "",
+                    "fone_pref2": "",
+                    "estado_civil2": "",
+                    "renda2": "",
 
-                "proprietario": "HOME BUY",
-                "empreendimento": "EMPREENDIMENTO",
-                "logradouro": "ENDEREÇO",
-                "unidade": unidade,
-                "area": area,
+                    "proprietario": "HOME BUY",
+                    "empreendimento": "EMPREENDIMENTO",
+                    "logradouro": "ENDEREÇO",
+                    "unidade": unidade,
+                    "area": area,
 
-                "valor_negocio": valor_negocio,
-                "entrada_total": entrada_total,
-                "valor_imovel": valor_imovel,
-                "entrada_imovel": entrada_imovel,
-                "parcela_36": parcela_36,
-                "saldo": saldo,
+                    "valor_negocio": valor_negocio,
+                    "entrada_total": entrada_total,
+                    "valor_imovel": valor_imovel,
+                    "entrada_imovel": entrada_imovel,
+                    "parcela_36": parcela_36,
+                    "saldo": saldo,
 
-                "data_venc": data_venc.strftime("%d/%m/%Y"),
-                "data_parc": data_parc.strftime("%d/%m/%Y"),
-                "data_saldo": data_saldo.strftime("%d/%m/%Y"),
-                "data_parc_ent": data_parc_ent.strftime("%d/%m/%Y"),
+                    "data_venc": data_venc.strftime("%d/%m/%Y"),
+                    "data_parc": data_parc.strftime("%d/%m/%Y"),
+                    "data_saldo": data_saldo.strftime("%d/%m/%Y"),
+                    "data_parc_ent": data_parc_ent.strftime("%d/%m/%Y"),
 
-                "ato": ato,
-                "parcelas_ent": parcelas_ent,
-                "vl_parcela_ent": vl_parcela_ent
-            }
+                    "ato": ato,
+                    "parcelas_ent": parcelas_ent,
+                    "vl_parcela_ent": vl_parcela_ent
+                }
 
-            excel = preencher_proposta(dados)
-            pdf = excel_para_pdf(excel)
+                excel_file = preencher_proposta(dados)
+                pdf_file = excel_para_pdf(excel_file)
 
-            with open(pdf, "rb") as f:
-                st.download_button("📥 Baixar PDF", f)
+                if os.path.exists(pdf_file):
+                    nome_arquivo = f"Proposta_{unidade.replace(' ', '_')}.pdf"
+
+                    with open(pdf_file, "rb") as f:
+                        st.download_button(
+                            "📥 Baixar PDF",
+                            f,
+                            file_name=nome_arquivo,
+                            mime="application/pdf"
+                        )
+
+                    st.success("✅ Proposta gerada com sucesso!")
+
+                else:
+                    st.error("❌ PDF não foi gerado.")
+
+            except Exception as e:
+                st.error(f"Erro: {e}")

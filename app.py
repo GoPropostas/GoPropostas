@@ -4,31 +4,35 @@ from fpdf import FPDF
 import io
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Gerador Home Buy", layout="wide")
+st.set_page_config(page_title="Gerador Home Buy Oficial", layout="wide")
 
 if 'loteamentos' not in st.session_state:
     st.session_state['loteamentos'] = {}
 
-# --- CLASSE PARA DESENHAR O PDF IGUAL AO MODELO EXCEL ---
+# --- CLASSE PARA O DESIGN IDÊNTICO AO EXCEL ---
 class HomeBuyPDF(FPDF):
     def header(self):
-        self.set_fill_color(240, 240, 240)
-        self.set_font("Arial", 'B', 12)
-        self.cell(0, 10, "PROPOSTA DE COMPRA DE LOTEAMENTO", 1, 1, 'C', 1)
+        # Cor Azul Marinho (Cabeçalho)
+        self.set_fill_color(23, 55, 94) 
+        self.set_text_color(255, 255, 255)
+        self.set_font("Arial", 'B', 14)
+        self.cell(0, 12, "PROPOSTA DE COMPRA DE LOTEAMENTO", 1, 1, 'C', 1)
+        self.set_text_color(0, 0, 0)
         self.ln(2)
 
     def secao(self, titulo):
-        self.set_fill_color(220, 220, 220)
+        # Cor Cinza (Subtítulos)
+        self.set_fill_color(217, 217, 217)
         self.set_font("Arial", 'B', 9)
-        self.cell(0, 6, f" {titulo}", 1, 1, 'L', 1)
+        self.cell(0, 7, f" {titulo}", 1, 1, 'L', 1)
 
     def campo(self, label, valor, largura, ln=0):
         self.set_font("Arial", 'B', 8)
         self.cell(largura * 0.3, 7, f" {label}:", 1, 0, 'L')
         self.set_font("Arial", size=9)
-        self.cell(largura * 0.7, 7, f" {valor}", 1, ln, 'L')
+        self.cell(largura * 0.7, 7, f" {str(valor)}", 1, ln, 'L')
 
-def gerar_proposta_completa(d):
+def gerar_pdf_identico(d):
     pdf = HomeBuyPDF()
     pdf.add_page()
     
@@ -36,113 +40,128 @@ def gerar_proposta_completa(d):
     pdf.secao("PROPONENTE / EMPRESA")
     pdf.campo("NOME", d['nome'], 130)
     pdf.campo("CPF/CNPJ", d['cpf'], 60, ln=1)
-    pdf.campo("NAC.", d['nacionalidade'], 50)
-    pdf.campo("PROFISSÃO", d['profissao'], 70)
-    pdf.campo("EST. CIVIL", d['est_civil'], 70, ln=1)
-    pdf.campo("E-MAIL", d['email'], 120)
-    pdf.campo("FONE", d['fone'], 70, ln=1)
+    pdf.campo("NACIONALIDADE", d['nac'], 65)
+    pdf.campo("PROFISSÃO", d['prof'], 65)
+    pdf.campo("ESTADO CIVIL", d['est'], 60, ln=1)
+    pdf.campo("E-MAIL", d['email'], 130)
+    pdf.campo("CELULAR", d['fone'], 60, ln=1)
     
-    # 2. ENDEREÇO
-    pdf.ln(2)
-    pdf.secao("ENDEREÇO DO PROPONENTE")
-    pdf.campo("LOGRADOURO", d['rua'], 130)
-    pdf.campo("Nº", d['num'], 60, ln=1)
-    pdf.campo("BAIRRO", d['bairro'], 70)
-    pdf.campo("CIDADE", d['cidade'], 70)
-    pdf.campo("UF", d['uf'], 50, ln=1)
-    
-    # 3. CÔNJUGE
+    # 2. CÔNJUGE
     pdf.ln(2)
     pdf.secao("CÔNJUGE / 2º PROPONENTE")
-    pdf.campo("NOME", d['c_nome'], 130)
-    pdf.campo("CPF", d['c_cpf'], 60, ln=1)
-    
-    # 4. IMÓVEL E VALORES
+    pdf.campo("NOME", d['cnome'], 130)
+    pdf.campo("CPF", d['ccpf'], 60, ln=1)
+    pdf.campo("NACIONALIDADE", d['cnac'], 65)
+    pdf.campo("PROFISSÃO", d['cprof'], 65)
+    pdf.campo("ESTADO CIVIL", d['cest'], 60, ln=1)
+
+    # 3. ENDEREÇO
     pdf.ln(2)
-    pdf.secao("CARACTERIZAÇÃO DO IMÓVEL E CONDIÇÕES")
-    pdf.campo("EMPREEND.", d['loteamento'], 110)
+    pdf.secao("ENDEREÇO")
+    pdf.campo("LOGRADOURO", d['rua'], 130)
+    pdf.campo("Nº", d['num'], 60, ln=1)
+    pdf.campo("BAIRRO", d['bairro'], 65)
+    pdf.campo("CIDADE", d['cidade'], 95)
+    pdf.campo("UF", d['uf'], 30, ln=1)
+
+    # 4. CARACTERIZAÇÃO DO IMÓVEL (VALORES)
+    pdf.ln(2)
+    pdf.secao("PROPRIETÁRIO / INCORPORADOR / CONDIÇÕES")
+    pdf.campo("EMPREENDIMENTO", d['loteamento'], 110)
     pdf.campo("UNIDADE", d['unidade'], 80, ln=1)
     pdf.campo("VALOR TOTAL", f"R$ {d['valor']:,.2f}", 95)
     pdf.campo("ATO (1%)", f"R$ {d['ato']:,.2f}", 95, ln=1)
     pdf.campo("INTERMED.", f"R$ {d['intermed']:,.2f}", 95)
-    pdf.campo("36 PARC.", f"R$ {d['p36']:,.2f}", 95, ln=1)
+    pdf.campo("36 PARCELAS", f"R$ {d['p36']:,.2f}", 95, ln=1)
 
-    # 5. RODAPÉ LEGAL
-    pdf.ln(5)
+    # 5. CLÁUSULA COMPROMISSÓRIA (TEXTO INTEGRAL DO SEU EXCEL)
+    pdf.ln(4)
     pdf.set_font("Arial", size=7)
-    pdf.multi_cell(0, 4, "Cláusula Compromissória: Todo litígio será decidido por arbitragem na 2ª Corte de Conciliação de Goiânia-GO. A proposta não garante reserva sem assinatura e pagamento do ato.", 1)
+    texto_hb = (
+        "Cláusula Compromissória: Todo litígio ou controvérsia originário ou decorrente deste instrumento será definitivamente decidido por arbitragem, "
+        "conforme a Lei 9.307/1996. A arbitragem será administrada pela 2° Corte de Conciliação e Arbitragem de Goiânia - Goiás, situada na "
+        "Avenida Fuad José Sebba, n° 1.193, Jardim Goiás, Goiânia, Goiás, eleita pelas partes e indicada nesta Cláusula. "
+        "A proposta assinada não garante reserva da unidade sem o pagamento do ato."
+    )
+    pdf.multi_cell(0, 4, texto_hb, 1)
     
+    pdf.ln(12)
+    pdf.cell(95, 10, "________________________________", 0, 0, 'C')
+    pdf.cell(95, 10, "________________________________", 0, 1, 'C')
+    pdf.set_font("Arial", 'B', 8)
+    pdf.cell(95, 5, "Assinatura do Proponente", 0, 0, 'C')
+    pdf.cell(95, 5, "Home Buy Negócios Imobiliários", 0, 1, 'C')
+
     return pdf.output(dest='S').encode('latin-1')
 
 # --- INTERFACE ---
 aba = st.sidebar.radio("Navegação", ["Gerar Proposta", "Admin"])
 
 if aba == "Admin":
-    st.header("⚙️ Painel Admin")
+    st.header("⚙️ Painel de Controle")
     if st.text_input("Senha", type="password") == "admin123":
-        arq = st.file_uploader("Suba a planilha", type=['xlsx'])
+        arq = st.file_uploader("Suba a planilha Frei Galvão", type=['xlsx'])
         if arq:
             df = pd.read_excel(arq, skiprows=11)
             st.session_state['loteamentos']["Frei Galvão"] = df.dropna(how='all', axis=1)
-            st.success("Tabela Ativa!")
+            st.success("Tabela Carregada!")
+
 else:
-    st.header("📝 Formulário Home Buy")
+    st.header("📝 Nova Proposta - Padrão Home Buy")
     if "Frei Galvão" in st.session_state['loteamentos']:
         df = st.session_state['loteamentos']["Frei Galvão"]
         cols = df.columns.tolist()
         lotes = df[df[cols[0]].astype(str).str.contains('LOTE', case=False, na=False)]
 
-        # Variável para controlar se o PDF está pronto
-        if 'pdf_pronto' not in st.session_state:
-            st.session_state.pdf_pronto = None
+        if 'pdf_data' not in st.session_state: st.session_state.pdf_data = None
 
-        with st.form("proposta_home_buy"):
-            st.subheader("Dados do Imóvel")
-            unid = st.selectbox("Selecione o Lote", lotes[cols[0]].unique())
-            
-            st.subheader("Dados do Proponente")
+        with st.form("form_oficial"):
+            st.subheader("1. Imóvel e Dados Pessoais")
             c1, c2 = st.columns(2)
-            nome = c1.text_input("Nome Completo")
-            cpf = c2.text_input("CPF/CNPJ")
+            unid = c1.selectbox("Unidade", lotes[cols[0]].unique())
+            nome = c2.text_input("Nome/Razão Social")
             
             c3, c4, c5 = st.columns(3)
-            nac = c3.text_input("Nacionalidade", "Brasileiro")
-            prof = c4.text_input("Profissão")
-            est = c5.selectbox("Estado Civil", ["Solteiro", "Casado", "Divorciado", "União Estável"])
+            cpf = c3.text_input("CPF/CNPJ")
+            nac = c4.text_input("Nacionalidade", "Brasileiro")
+            prof = c5.text_input("Profissão")
             
-            st.subheader("Endereço")
-            end_c1, end_c2 = st.columns([3, 1])
-            rua = end_c1.text_input("Rua/Av")
-            num = end_c2.text_input("Nº")
-            
-            st.subheader("Cônjuge (Se houver)")
-            cnome = st.text_input("Nome do Cônjuge")
-            ccpf = st.text_input("CPF do Cônjuge")
+            c6, c7, c8 = st.columns(3)
+            est = st.selectbox("Estado Civil", ["Solteiro(a)", "Casado(a)", "Divorciado(a)", "União Estável"])
+            fone = st.text_input("Telefone Celular")
+            email = st.text_input("E-mail")
 
-            submit = st.form_submit_button("Preparar Proposta")
+            st.subheader("2. Cônjuge / 2º Proponente")
+            cc1, cc2 = st.columns(2)
+            cnome = cc1.text_input("Nome Cônjuge")
+            ccpf = cc2.text_input("CPF Cônjuge")
             
-            if submit:
+            st.subheader("3. Endereço")
+            e1, e2, e3 = st.columns([3, 1, 1])
+            rua = e1.text_input("Logradouro")
+            num = e2.text_input("Nº")
+            uf = e3.text_input("UF", "GO")
+            
+            e4, e5 = st.columns(2)
+            bairro = e4.text_input("Bairro")
+            cidade = e5.text_input("Cidade")
+
+            if st.form_submit_button("Gerar Proposta Idêntica"):
                 dados_lote = lotes[lotes[cols[0]] == unid].iloc[0]
                 v_tot = float(dados_lote[cols[2]])
                 
                 info = {
-                    'nome': nome, 'cpf': cpf, 'nacionalidade': nac, 'profissao': prof, 'est_civil': est,
-                    'email': "", 'fone': "", 'rua': rua, 'num': num, 'bairro': "", 'cidade': "", 'uf': "",
-                    'c_nome': cnome, 'c_cpf': ccpf, 'unidade': unid, 'valor': v_tot,
-                    'ato': v_tot*0.01, 'intermed': v_tot*0.053, 'p36': float(dados_lote[cols[7]]),
+                    'nome': nome, 'cpf': cpf, 'nac': nac, 'prof': prof, 'est': est, 'fone': fone, 'email': email,
+                    'cnome': cnome, 'ccpf': ccpf, 'cnac': "Brasileiro", 'cprof': "", 'cest': est,
+                    'rua': rua, 'num': num, 'bairro': bairro, 'cidade': cidade, 'uf': uf,
+                    'unidade': unid, 'valor': v_tot, 'ato': v_tot*0.01, 
+                    'intermed': v_tot*0.053, 'p36': float(dados_lote[cols[7]]),
                     'loteamento': "Residencial Frei Galvão"
                 }
-                st.session_state.pdf_pronto = gerar_proposta_completa(info)
-                st.session_state.unid_ref = unid
+                st.session_state.pdf_data = gerar_pdf_identico(info)
+                st.session_state.u_ref = unid
 
-        # BOTÃO DE DOWNLOAD FORA DO FORMULÁRIO
-        if st.session_state.pdf_pronto:
-            st.success("✅ Proposta preparada com sucesso!")
-            st.download_button(
-                label="📥 BAIXAR PROPOSTA AGORA",
-                data=st.session_state.pdf_pronto,
-                file_name=f"Proposta_{st.session_state.unid_ref}.pdf",
-                mime="application/pdf"
-            )
+        if st.session_state.pdf_data:
+            st.download_button("📥 BAIXAR PDF (FORMATO OFICIAL)", st.session_state.pdf_data, f"Proposta_{st.session_state.u_ref}.pdf")
     else:
-        st.info("Suba a planilha no Admin.")
+        st.info("Aguardando planilha no Admin.")

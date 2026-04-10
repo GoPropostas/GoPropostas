@@ -17,7 +17,7 @@ def validar_cpf(cpf):
         if digito != int(cpf[i]): return False
     return True
 
-# --- CLASSE PDF (ESTILO OFICIAL) ---
+# --- CLASSE PDF ---
 class HomeBuyPDF(FPDF):
     def header(self):
         self.set_fill_color(23, 55, 94)
@@ -48,7 +48,6 @@ class HomeBuyPDF(FPDF):
 def gerar_pdf_completo(d):
     pdf = HomeBuyPDF()
     pdf.add_page()
-    
     pdf.seccao("PROPONENTE / EMPRESA")
     pdf.campo("NOME", d['nome'], 190, True)
     pdf.campo("CPF/CNPJ", d['cpf'], 65)
@@ -107,8 +106,13 @@ if menu == "Painel Admin":
     if senha == "admin123":
         uploaded_file = st.file_uploader("Subir Tabela de Preços (Excel)", type=['xlsx'])
         if uploaded_file:
-            st.session_state['db'] = pd.read_excel(uploaded_file, skiprows=11)
-            st.success("Tabela carregada!")
+            # Carrega os dados
+            temp_df = pd.read_excel(uploaded_file, skiprows=11)
+            # Remove colunas sem nome (Unamed)
+            temp_df = temp_df.loc[:, ~temp_df.columns.str.contains('^Unnamed')]
+            st.session_state['db'] = temp_df
+            st.success("Tabela carregada com sucesso!")
+            st.write("Colunas detectadas:", list(temp_df.columns))
     elif senha != "":
         st.error("Senha incorreta.")
 
@@ -120,24 +124,24 @@ else:
         st.warning("⚠️ Administrador: Por favor, suba a tabela no Painel Admin.")
     else:
         df = st.session_state['db']
-        # Ajuste exato das colunas baseado no seu pedido:
-        # Coluna 0: Lote | Coluna 2: Valor Negócio | Coluna 3: Intermediação | Coluna 4: Entrada Imóvel
-        col_lote = df.columns[0]
-        col_v_negocio = df.columns[2]
-        col_v_intermed = df.columns[3]
-        col_v_entrada_imovel = df.columns[4]
-
-        lotes = df[df[col_lote].astype(str).str.contains('LOTE', case=False, na=False)]
+        
+        # Filtra linhas que contenham "LOTE" na primeira coluna
+        lotes = df[df[df.columns[0]].astype(str).str.contains('LOTE', case=False, na=False)]
         
         with st.form("form_venda"):
-            u = st.selectbox("Unidade", lotes[col_lote].unique())
+            u = st.selectbox("Selecione a Unidade", lotes[df.columns[0]].unique())
             
-            # Recupera valores
-            dados = lotes[lotes[col_lote] == u].iloc[0]
-            v_negocio_val = float(dados[col_v_negocio])
-            v_intermed_val = float(dados[col_v_intermed])
-            v_ent_imovel_val = float(dados[col_v_entrada_imovel])
-            entrada_total_val = v_intermed_val + v_ent_imovel_val
+            # BUSCA DINÂMICA PELO NOME DA COLUNA (MAIS SEGURO)
+            dados = lotes[lotes[df.columns[0]] == u].iloc[0]
+            
+            try:
+                v_negocio_val = float(dados["Valor Negócio"])
+                v_intermed_val = float(dados["Intermediação"])
+                v_ent_imovel_val = float(dados["Entrada Imóvel"])
+                entrada_total_val = v_intermed_val + v_ent_imovel_val
+            except KeyError as e:
+                st.error(f"Erro: Não encontrei a coluna {e} na sua planilha. Verifique se o nome está exatamente igual.")
+                st.stop()
 
             st.subheader("👤 Cliente")
             c1, c2 = st.columns(2)
@@ -149,12 +153,12 @@ else:
             f_fixo = c4.text_input("Fixo")
             f_ref = c5.text_input("Referência")
             
-            c6, c7 = st.columns(2)
+            c6, c7, c8 = st.columns(3)
             nac = c6.text_input("Nacionalidade", "Brasileiro")
             prof = c7.text_input("Profissão")
-            
-            c8, c9, c10 = st.columns(3)
             est_civil = c8.selectbox("Estado Civil", ["Solteiro", "Casado", "Divorciado", "União Estável"])
+            
+            c9, c10 = st.columns(2)
             renda = c9.text_input("Renda")
             email = c10.text_input("E-mail")
 
@@ -165,8 +169,8 @@ else:
             crenda = cc3.text_input("Renda Cônjuge")
 
             st.subheader("💰 Plano de Entrada")
-            # Entrada total puxando Intermediação + Entrada Imóvel
-            v_entrada_final = st.number_input("Valor da Entrada Total", value=entrada_total_val)
+            # Agora a entrada total é a soma automática
+            v_entrada_final = st.number_input("Valor da Entrada Total (Intermediação + Entrada Imóvel)", value=entrada_total_val)
             parcelas = st.slider("Parcelar saldo em (1 a 4x):", 1, 4, 1)
 
             if st.form_submit_button("GERAR PROPOSTA"):
@@ -179,8 +183,8 @@ else:
 
                     txt_pag = (
                         f"Detalhamento:\n"
-                        f"- Ato (0,30% do negócio): R$ {ato_val:,.2f}\n"
-                        f"- Saldo: {parcelas}x de R$ {v_parc_val:,.2f} mensais."
+                        f"- Ato (0,30% sobre Valor Negócio): R$ {ato_val:,.2f}\n"
+                        f"- Saldo da Entrada: {parcelas}x de R$ {v_parc_val:,.2f} mensais."
                     )
 
                     info = {
@@ -194,7 +198,7 @@ else:
                     }
                     
                     st.session_state['pdf_file'] = gerar_pdf_completo(info)
-                    st.success("✅ Gerado!")
+                    st.success("✅ Proposta gerada com sucesso!")
 
         if 'pdf_file' in st.session_state:
             with open(st.session_state['pdf_file'], "rb") as f:

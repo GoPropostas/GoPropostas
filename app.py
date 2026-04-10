@@ -9,14 +9,16 @@ st.set_page_config(page_title="Home Buy - Gerador Oficial", layout="wide")
 
 ARQUIVO_MODELO = "PROPOSTA LOTEAMENTO HOME BUY (1).xlsx"
 
+# Inicialização do estado
 if 'loteamentos' not in st.session_state:
     st.session_state['loteamentos'] = None
+if 'arquivo_pronto' not in st.session_state:
+    st.session_state['arquivo_pronto'] = None
 
-# --- FUNÇÃO PARA ESCREVER EM CÉLULAS MESCLADAS SEM ERRO ---
+# --- FUNÇÃO PARA ESCREVER EM CÉLULAS MESCLADAS ---
 def safe_write(ws, cell_coord, value):
     cell = ws[cell_coord]
     if isinstance(cell, MergedCell):
-        # Se for célula mesclada, precisamos achar a célula mestre (a primeira do grupo)
         for range_ in ws.merged_cells.ranges:
             if cell_coord in range_:
                 ws.cell(range_.min_row, range_.min_col).value = value
@@ -28,8 +30,7 @@ def preencher_proposta_excel(dados):
     wb = load_workbook(ARQUIVO_MODELO)
     ws = wb.active
 
-    # MAPEAMENTO BASEADO NO SEU MODELO (Letra e Número da célula no Excel)
-    # Proponente
+    # Mapeamento conforme seu modelo original
     safe_write(ws, 'B5', dados['nome'])
     safe_write(ws, 'B6', dados['cpf'])
     safe_write(ws, 'I6', dados['fone'])
@@ -42,7 +43,7 @@ def preencher_proposta_excel(dados):
     safe_write(ws, 'B11', dados['cnome'])
     safe_write(ws, 'B12', dados['ccpf'])
     
-    # Imóvel (Ajustado para o layout do Frei Galvão)
+    # Imóvel e Valores
     safe_write(ws, 'C19', "RESIDENCIAL FREI GALVÃO")
     safe_write(ws, 'I20', dados['unidade'])
     safe_write(ws, 'C23', dados['valor_total'])
@@ -67,7 +68,7 @@ if aba == "Admin":
             st.success("Tabela carregada!")
 
 else:
-    st.header("📝 Preencher Proposta Original")
+    st.header("📝 Preencher Proposta Home Buy")
     
     if st.session_state['loteamentos'] is None:
         st.info("Aguardando upload da tabela no Admin.")
@@ -97,8 +98,10 @@ else:
             cnome = st.text_input("Nome Cônjuge")
             ccpf = st.text_input("CPF Cônjuge")
 
-            if st.form_submit_button("Gerar Proposta Preenchida"):
-                # Busca valores da tabela
+            # O botão de formulário apenas PROCESSA os dados
+            gerar = st.form_submit_button("Preparar Proposta")
+
+            if gerar:
                 dados_lote = lotes[lotes[cols[0]] == unid].iloc[0]
                 v_tot = float(dados_lote[cols[2]])
                 
@@ -111,8 +114,19 @@ else:
                 
                 try:
                     caminho = preencher_proposta_excel(info)
-                    with open(caminho, "rb") as f:
-                        st.success("✅ Excel gerado com sucesso!")
-                        st.download_button("📥 Baixar Proposta (.xlsx)", f, file_name=f"Proposta_{unid}.xlsx")
+                    # Guardamos o caminho no session_state
+                    st.session_state['arquivo_pronto'] = caminho
+                    st.session_state['unidade_gerada'] = unid
                 except Exception as e:
-                    st.error(f"Erro ao processar: {e}")
+                    st.error(f"Erro: {e}")
+
+        # O BOTÃO DE DOWNLOAD FICA FORA DO FORMULÁRIO
+        if st.session_state['arquivo_pronto']:
+            st.success(f"✅ Proposta da unidade {st.session_state['unidade_gerada']} pronta!")
+            with open(st.session_state['arquivo_pronto'], "rb") as f:
+                st.download_button(
+                    label="📥 BAIXAR AGORA (.xlsx)",
+                    data=f,
+                    file_name=f"Proposta_{st.session_state['unidade_gerada']}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )

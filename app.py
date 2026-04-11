@@ -10,12 +10,12 @@ from supabase import Client, create_client
 
 st.set_page_config(page_title="Sistema de Propostas", layout="centered")
 
-# ---------------- SUPABASE ----------------
+# ---------------- SUPABASE LOGIN ----------------
 @st.cache_resource
 def get_supabase() -> Client:
     return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"],
+        st.secrets["SUPABASE_URL"].strip(),
+        st.secrets["SUPABASE_KEY"].strip(),
     )
 
 def buscar_profile_por_id(user_id: str):
@@ -40,16 +40,6 @@ def buscar_profile_por_email(email: str):
     )
     return resp.data[0] if resp.data else None
 
-def criar_profile(user_id: str, email: str, nome: str, tipo: str = "corretor"):
-    supabase = get_supabase()
-    payload = {
-        "id": user_id,
-        "email": email,
-        "nome": nome,
-        "tipo": tipo,
-    }
-    return supabase.table("profiles").upsert(payload).execute()
-
 def login_com_supabase(email: str, senha: str):
     supabase = get_supabase()
     return supabase.auth.sign_in_with_password({
@@ -57,11 +47,16 @@ def login_com_supabase(email: str, senha: str):
         "password": senha,
     })
 
-def cadastrar_com_supabase(email: str, senha: str):
+def cadastrar_com_supabase(nome: str, email: str, senha: str):
     supabase = get_supabase()
     return supabase.auth.sign_up({
         "email": email,
         "password": senha,
+        "options": {
+            "data": {
+                "nome": nome
+            }
+        }
     })
 
 def init_auth_state():
@@ -70,6 +65,8 @@ def init_auth_state():
         "usuario_email": "",
         "usuario_nome": "",
         "tipo": "",
+        "sb_access_token": "",
+        "sb_refresh_token": "",
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -80,6 +77,37 @@ def aplicar_login(profile: dict):
     st.session_state["usuario_email"] = profile["email"]
     st.session_state["usuario_nome"] = profile.get("nome") or profile["email"]
     st.session_state["tipo"] = profile["tipo"]
+
+def salvar_tokens_da_sessao(auth_response):
+    session = getattr(auth_response, "session", None)
+    if session:
+        st.session_state["sb_access_token"] = session.access_token or ""
+        st.session_state["sb_refresh_token"] = session.refresh_token or ""
+
+def tentar_restaurar_sessao():
+    if st.session_state.get("logado"):
+        return
+
+    access_token = st.session_state.get("sb_access_token", "")
+    refresh_token = st.session_state.get("sb_refresh_token", "")
+
+    if not access_token or not refresh_token:
+        return
+
+    try:
+        supabase = get_supabase()
+        supabase.auth.set_session(access_token, refresh_token)
+        sessao = supabase.auth.get_session()
+        session = getattr(sessao, "session", None)
+
+        if not session or not session.user:
+            return
+
+        profile = buscar_profile_por_id(session.user.id)
+        if profile:
+            aplicar_login(profile)
+    except Exception:
+        pass
 
 def tela_login():
     st.title("🔐 Sistema de Propostas")
@@ -99,10 +127,12 @@ def tela_login():
                     st.error("Email ou senha inválidos.")
                     return
 
+                salvar_tokens_da_sessao(resp)
+
                 profile = buscar_profile_por_id(user.id)
                 if not profile:
-                    criar_profile(user.id, user.email, user.email.split("@")[0], "corretor")
-                    profile = buscar_profile_por_id(user.id)
+                    st.error("Perfil não encontrado. Verifique se o trigger do Supabase foi criado.")
+                    return
 
                 aplicar_login(profile)
                 st.success("Login realizado com sucesso!")
@@ -131,11 +161,10 @@ def tela_login():
                     st.warning("Já existe uma conta com esse email.")
                     return
 
-                resp = cadastrar_com_supabase(email, senha)
+                resp = cadastrar_com_supabase(nome, email, senha)
                 user = resp.user
 
                 if user:
-                    criar_profile(user.id, email, nome, "corretor")
                     st.success("Conta criada com sucesso! Agora faça login.")
                 else:
                     st.success("Conta criada! Verifique seu email para confirmar o cadastro antes de entrar.")
@@ -150,7 +179,10 @@ def logout():
         except Exception:
             pass
 
-        for chave in ["logado", "usuario_email", "usuario_nome", "tipo"]:
+        for chave in [
+            "logado", "usuario_email", "usuario_nome", "tipo",
+            "sb_access_token", "sb_refresh_token"
+        ]:
             if chave in st.session_state:
                 del st.session_state[chave]
 
@@ -158,6 +190,7 @@ def logout():
 
 # ---------------- CONTROLE LOGIN ----------------
 init_auth_state()
+tentar_restaurar_sessao()
 
 if not st.session_state["logado"]:
     tela_login()
@@ -215,7 +248,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb = load_workbook(modelo)
     ws = wb.active
 
-    # CLIENTE
     ws["E5"] = d["nome"]
     ws["D6"] = d["cpf"]
     ws["J6"] = d["telefone"]
@@ -227,7 +259,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["O8"] = d["renda"]
     ws["E9"] = d["email"]
 
-    # CÔNJUGE
     ws["G11"] = d["conjuge"]
     ws["D13"] = d["cpf2"]
     ws["J13"] = d["tel2"]
@@ -238,7 +269,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["D15"] = d["civil2"]
     ws["O15"] = d["renda2"]
 
-    # LOTE
     ws["G18"] = d["proprietario"]
     ws["G19"] = d["empreendimento"]
     ws["C20"] = d["logradouro"]
@@ -249,7 +279,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    # BLOCO 24–26
     ws["B24"] = 1
     ws["C24"] = d["entrada_imovel"]
     ws["G24"] = "Única"
@@ -269,7 +298,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["P25"] = "Reajustável"
     ws["P26"] = "Reajustável"
 
-    # ENTRADA
     ws["B33"] = 1
     ws["C33"] = d["ato"]
     ws["G33"] = "Única"
@@ -321,7 +349,6 @@ valor_imovel = buscar(linha, ["valor imóvel"])
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
-# CLIENTE
 st.subheader("👤 Cliente")
 nome = st.text_input("Nome", key="nome")
 cpf = st.text_input("CPF", key="cpf")
@@ -334,7 +361,6 @@ estado_civil = st.text_input("Estado civil", key="civil")
 renda = st.text_input("Renda", key="renda")
 email = st.text_input("Email", key="email")
 
-# CÔNJUGE
 st.subheader("👫 Cônjuge")
 conjuge = st.text_input("Nome", key="conj")
 cpf2 = st.text_input("CPF", key="cpf2")
@@ -346,19 +372,16 @@ fone2 = st.text_input("Fone preferência", key="fone2")
 civil2 = st.text_input("Estado civil", key="civil2")
 renda2 = st.text_input("Renda", key="renda2")
 
-# DATAS DE VENCIMENTO
 st.subheader("📅 Datas de Vencimento")
 data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
 data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
 data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
 
-# DATAS DA ENTRADA
 st.subheader("📅 Datas da Entrada")
 data_ato = st.date_input("Data do ato", key="data_ato")
 data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
 data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
 
-# CONDIÇÕES
 st.subheader("💰 Condições")
 valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
 personalizar = st.checkbox("⚙️ Personalizar", key="pers")
@@ -394,7 +417,6 @@ if personalizar and parcelas > 1:
         parcelas_iguais = parcelas - 1
         data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
 
-# DETALHES DO LOTE
 st.divider()
 st.subheader("🏡 Detalhes do Lote")
 st.metric("Unidade", unidade)
@@ -404,7 +426,6 @@ st.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
 st.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
 st.metric("Intermediação", f"R$ {intermed:,.2f}")
 
-# PAINEL DE CÁLCULO
 st.divider()
 st.subheader("📊 Painel de Cálculo")
 st.metric("Valor do Negócio", f"R$ {valor_negocio:,.2f}")
@@ -432,7 +453,6 @@ if valor_cliente < ato:
 if restante == 0:
     st.success("✅ Entrada quitada")
 
-# GERAR
 if st.button("GERAR PDF", use_container_width=True):
     dados = {
         "nome": nome,

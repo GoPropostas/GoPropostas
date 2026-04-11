@@ -118,6 +118,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["D6"] = d["cpf"]
     ws["J6"] = d["telefone"]
     ws["O6"] = d["fixo"]
+    # ... (restante das células de cliente e cônjuge mantidas)
     ws["D7"] = d["nacionalidade"]
     ws["J7"] = d["profissao"]
     ws["P7"] = d["fone_pref"]
@@ -147,24 +148,24 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    ws["C24"] = d["entrada_imovel"]
-    ws["C25"] = d["parcela_36"]
-    ws["C26"] = d["saldo"]
-
-    # 🔥 BLOCO 24–26 (ADICIONADO)
+    # --- NOVAS FUNÇÕES MAPEADAS (B24 até K26) ---
     ws["B24"] = 1
-    ws["B25"] = 36
-    ws["B26"] = 1
-
+    ws["C24"] = d["entrada_imovel"]
     ws["G24"] = "Única"
-    ws["G25"] = "Mensal"
-    ws["G26"] = "Única"
+    ws["K24"] = d["data_venc_emp"]
 
-    ws["K24"] = d["data_empreendedor"]
+    ws["B25"] = "36x"
+    ws["C25"] = d["parcela_36"]
+    ws["G25"] = "Mensal"
     ws["K25"] = d["data_parcelas"]
+
+    ws["B26"] = 1
+    ws["C26"] = d["saldo"]
+    # Corrigido conforme solicitação: G26 Única
+    ws["G26"] = "Única" 
     ws["K26"] = d["data_saldo"]
 
-    # ENTRADA
+    # ENTRADA (Bloco de baixo mantido)
     ws["B33"] = 1
     ws["C33"] = d["ato"]
     ws["G33"] = "Única"
@@ -209,7 +210,7 @@ valor_imovel = buscar(linha, ["valor imóvel"])
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
-# CLIENTE
+# CLIENTE E CONJUGE (Código omitido aqui por brevidade, mas mantido no script original)
 st.subheader("👤 Cliente")
 nome = st.text_input("Nome", key="nome")
 cpf = st.text_input("CPF", key="cpf")
@@ -222,13 +223,56 @@ estado_civil = st.text_input("Estado civil", key="civil")
 renda = st.text_input("Renda", key="renda")
 email = st.text_input("Email", key="email")
 
-# 🔥 DATAS (ADICIONADO)
-st.subheader("📅 Datas de Pagamento")
-data_empreendedor = st.date_input("Data Vencimento Empreendedor", key="data_emp")
-data_parcelas = st.date_input("Data Parcelas (36x)", key="data_parc36")
-data_saldo = st.date_input("Data Saldo Devedor", key="data_saldo")
+st.subheader("👫 Cônjuge")
+conjuge = st.text_input("Nome", key="conj")
+cpf2 = st.text_input("CPF", key="cpf2")
+tel2 = st.text_input("Telefone", key="tel2")
+fixo2 = st.text_input("Fixo", key="fixo2")
+nac2 = st.text_input("Nacionalidade", key="nac2")
+prof2 = st.text_input("Profissão", key="prof2")
+fone2 = st.text_input("Fone preferência", key="fone2")
+civil2 = st.text_input("Estado civil", key="civil2")
+renda2 = st.text_input("Renda", key="renda2")
 
-# RESTO DO CÓDIGO CONTINUA IGUAL...
+# --- NOVOS CAMPOS DE DATA SOLICITADOS ---
+st.subheader("📅 Datas de Vencimento")
+col_d1, col_d2, col_d3 = st.columns(3)
+with col_d1:
+    data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
+with col_d2:
+    data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
+with col_d3:
+    data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
+
+# PARCELAS INTELIGENTES
+st.subheader("💰 Condições")
+valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
+personalizar = st.checkbox("⚙️ Personalizar", key="pers")
+
+ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0
+ato = ato_manual if ato_manual > 0 else ato_min
+
+restante = entrada_total - valor_cliente
+if restante < 0: restante = 0
+
+parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
+parcelas_iguais = parcelas
+valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
+usar_diferente = False
+parcela_diferente = 0
+data_parcela_diferente = ""
+
+if personalizar and parcelas > 1:
+    parcela_editada = st.number_input("Parcela diferente", min_value=0.0, key="diff")
+    restante_auto = restante - parcela_editada
+    if restante_auto < 0: restante_auto = 0
+    valor_parcela_igual = restante_auto / (parcelas - 1)
+
+    if abs(parcela_editada - valor_parcela_igual) > 0.01:
+        usar_diferente = True
+        parcela_diferente = parcela_editada
+        parcelas_iguais = parcelas - 1
+        data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
 
 # GERAR
 if st.button("GERAR PDF"):
@@ -243,15 +287,15 @@ if st.button("GERAR PDF"):
         "estado_civil": estado_civil,
         "renda": renda,
         "email": email,
-        "conjuge": "",
-        "cpf2": "",
-        "tel2": "",
-        "fixo2": "",
-        "nac2": "",
-        "prof2": "",
-        "fone2": "",
-        "civil2": "",
-        "renda2": "",
+        "conjuge": conjuge,
+        "cpf2": cpf2,
+        "tel2": tel2,
+        "fixo2": fixo2,
+        "nac2": nac2,
+        "prof2": prof2,
+        "fone2": fone2,
+        "civil2": civil2,
+        "renda2": renda2,
         "proprietario": emp["proprietario"],
         "empreendimento": emp["nome"],
         "logradouro": emp["logradouro"],
@@ -263,15 +307,16 @@ if st.button("GERAR PDF"):
         "entrada_imovel": entrada_imovel,
         "parcela_36": parcela_36,
         "saldo": saldo,
-        "ato": ato_min,
-        "parcelas_iguais": 1,
-        "valor_parcela_igual": 0,
-        "usar_diferente": False,
-        "parcela_diferente": 0,
-        "data_parcela_diferente": "",
-        "data_empreendedor": data_empreendedor.strftime("%d/%m/%Y") if data_empreendedor else "",
-        "data_parcelas": data_parcelas.strftime("%d/%m/%Y") if data_parcelas else "",
-        "data_saldo": data_saldo.strftime("%d/%m/%Y") if data_saldo else ""
+        "ato": ato,
+        "parcelas_iguais": parcelas_iguais,
+        "valor_parcela_igual": valor_parcela_igual,
+        "usar_diferente": usar_diferente,
+        "parcela_diferente": parcela_diferente,
+        "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else "",
+        # Datas formatadas para o Excel
+        "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
+        "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
+        "data_saldo": data_saldo.strftime("%d/%m/%Y")
     }
 
     excel = preencher_proposta(dados)

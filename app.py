@@ -21,44 +21,84 @@ def salvar_usuarios(users):
     with open(USUARIOS_FILE, "w") as f:
         json.dump(users, f, indent=4)
 
-# ---------------- LOGIN ----------------
+# ---------------- LOGIN / CADASTRO ----------------
 def tela_login():
-    st.title("🔐 Login")
+    st.title("🔐 Sistema de Propostas")
+
+    abas = st.tabs(["Login", "Criar conta"])
 
     usuarios = carregar_usuarios()
 
-    user = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
+    # LOGIN
+    with abas[0]:
+        user = st.text_input("Usuário")
+        senha = st.text_input("Senha", type="password")
 
-    if st.button("Entrar"):
-        if user in usuarios and usuarios[user]["senha"] == senha:
-            st.session_state["logado"] = True
-            st.session_state["usuario"] = user
-            st.session_state["tipo"] = usuarios[user]["tipo"]
-            st.rerun()
-        else:
-            st.error("Usuário ou senha inválidos")
+        if st.button("Entrar"):
+            if user in usuarios and usuarios[user]["senha"] == senha:
+                st.session_state["logado"] = True
+                st.session_state["usuario"] = user
+                st.session_state["tipo"] = usuarios[user]["tipo"]
+                st.rerun()
+            else:
+                st.error("Usuário ou senha inválidos")
 
+    # CADASTRO LIVRE
+    with abas[1]:
+        novo = st.text_input("Novo usuário")
+        senha_nova = st.text_input("Senha", type="password")
+        confirmar = st.text_input("Confirmar senha", type="password")
+
+        if st.button("Criar conta"):
+            if novo in usuarios:
+                st.warning("Usuário já existe")
+            elif senha_nova != confirmar:
+                st.warning("Senhas não conferem")
+            elif novo == "" or senha_nova == "":
+                st.warning("Preencha tudo")
+            else:
+                usuarios[novo] = {
+                    "senha": senha_nova,
+                    "tipo": "corretor"
+                }
+                salvar_usuarios(usuarios)
+                st.success("Conta criada! Faça login.")
+
+# ADMIN
 def tela_admin():
-    st.subheader("👤 Cadastrar Corretor")
+    st.sidebar.subheader("👤 Criar Corretor")
 
     usuarios = carregar_usuarios()
 
-    novo = st.text_input("Novo usuário")
-    senha = st.text_input("Senha", type="password")
+    novo = st.sidebar.text_input("Novo usuário")
+    senha = st.sidebar.text_input("Senha", type="password")
 
-    if st.button("Cadastrar"):
+    if st.sidebar.button("Cadastrar"):
         if novo in usuarios:
-            st.warning("Usuário já existe")
+            st.sidebar.warning("Já existe")
         else:
             usuarios[novo] = {"senha": senha, "tipo": "corretor"}
             salvar_usuarios(usuarios)
-            st.success("Corretor cadastrado!")
+            st.sidebar.success("Criado!")
 
 def logout():
     if st.sidebar.button("🚪 Sair"):
         st.session_state.clear()
         st.rerun()
+
+# ---------------- CONTROLE LOGIN ----------------
+if "logado" not in st.session_state:
+    st.session_state["logado"] = False
+
+if not st.session_state["logado"]:
+    tela_login()
+    st.stop()
+
+st.sidebar.write(f"👤 {st.session_state['usuario']}")
+logout()
+
+if st.session_state["tipo"] == "admin":
+    tela_admin()
 
 # ---------------- EMPREENDIMENTOS ----------------
 empreendimentos = {
@@ -70,14 +110,12 @@ empreendimentos = {
     }
 }
 
-# ---------------- CACHE ----------------
 @st.cache_data
 def carregar_tabela(arquivo):
     df = pd.read_excel(arquivo, skiprows=11)
     df.columns = df.columns.str.strip().str.lower()
     return df
 
-# ---------------- FUNÇÕES ----------------
 def limpar(valor):
     if pd.isna(valor): return 0.0
     if isinstance(valor, (int, float)): return float(valor)
@@ -95,15 +133,10 @@ def buscar(linha, nomes):
     return 0.0
 
 def excel_para_pdf(arquivo_excel):
-    subprocess.run([
-        "libreoffice", "--headless", "--convert-to", "pdf",
-        arquivo_excel
-    ])
+    subprocess.run(["libreoffice", "--headless", "--convert-to", "pdf", arquivo_excel])
     return arquivo_excel.replace(".xlsx", ".pdf")
 
-# ---------------- EXCEL ----------------
 def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
-
     wb = load_workbook(modelo)
     ws = wb.active
 
@@ -147,27 +180,15 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb.save(arquivo)
     return arquivo
 
-# ---------------- CONTROLE LOGIN ----------------
-if "logado" not in st.session_state:
-    st.session_state["logado"] = False
+# ---------------- APP ORIGINAL (SEM QUEBRAR) ----------------
 
-if not st.session_state["logado"]:
-    tela_login()
-    st.stop()
-
-st.sidebar.write(f"👤 {st.session_state['usuario']}")
-logout()
-
-if st.session_state["tipo"] == "admin":
-    tela_admin()
-
-# ---------------- APP ----------------
-emp_nome = st.selectbox("Empreendimento", list(empreendimentos.keys()))
+st.subheader("🏢 Empreendimento")
+emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()))
 emp = empreendimentos[emp_nome]
 
 df = carregar_tabela(emp["tabela"])
-
 col = df.columns[0]
+
 unidade = st.selectbox("Lote", df[col].dropna().unique())
 linha = df[df[col] == unidade].iloc[0]
 
@@ -176,18 +197,20 @@ entrada_imovel = buscar(linha, ["entrada imovel"])
 intermed = buscar(linha, ["intermediação"])
 parcela_36 = buscar(linha, ["36x"])
 saldo = buscar(linha, ["saldo"])
-area = buscar(linha, ["área"])
+area = buscar(linha, ["área", "area"])
 valor_imovel = buscar(linha, ["valor imóvel"])
 
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
+st.subheader("Cliente")
 nome = st.text_input("Nome")
 cpf = st.text_input("CPF")
 
+st.subheader("Entrada")
 valor_cliente = st.number_input("Entrada do cliente", min_value=0.0)
 
-personalizar = st.checkbox("Opções personalizáveis")
+personalizar = st.checkbox("⚙️ Opções personalizáveis")
 
 ato_manual = st.number_input("Valor de ato", min_value=0.0) if personalizar else 0
 ato = ato_manual if ato_manual > 0 else ato_min
@@ -209,7 +232,7 @@ if personalizar and parcelas > 1:
     if restante_auto < 0: restante_auto = 0
 
     valor_parcela_igual = restante_auto / (parcelas - 1)
-    
+
     if abs(parcela_editada - valor_parcela_igual) > 0.01:
         usar_diferente = True
         parcela_diferente = parcela_editada
@@ -218,7 +241,7 @@ if personalizar and parcelas > 1:
 
 # ---------------- CONFERÊNCIA ----------------
 st.divider()
-st.subheader("Conferência")
+st.subheader("📊 Conferência")
 
 st.write(f"Entrada total: R$ {entrada_total:.2f}")
 st.write(f"Ato: R$ {ato:.2f}")
@@ -226,7 +249,6 @@ st.write(f"Parcelas: {parcelas}")
 
 # ---------------- GERAR ----------------
 if st.button("GERAR PDF"):
-
     dados = {
         "nome": nome,
         "cpf": cpf,
@@ -253,4 +275,4 @@ if st.button("GERAR PDF"):
     pdf = excel_para_pdf(excel)
 
     with open(pdf, "rb") as f:
-        st.download_button("Baixar PDF", f, file_name=f"Proposta_{unidade}.pdf")
+        st.download_button("📥 Baixar PDF", f, file_name=f"Proposta_{unidade}.pdf")

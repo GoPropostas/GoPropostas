@@ -21,19 +21,18 @@ def salvar_usuarios(users):
     with open(USUARIOS_FILE, "w") as f:
         json.dump(users, f, indent=4)
 
-# ---------------- LOGIN / CADASTRO ----------------
+# ---------------- LOGIN ----------------
 def tela_login():
     st.title("🔐 Sistema de Propostas")
 
     abas = st.tabs(["Login", "Criar conta"])
     usuarios = carregar_usuarios()
 
-    # LOGIN
     with abas[0]:
         user = st.text_input("Usuário", key="login_user")
         senha = st.text_input("Senha", type="password", key="login_senha")
 
-        if st.button("Entrar", key="btn_login"):
+        if st.button("Entrar"):
             if user in usuarios and usuarios[user]["senha"] == senha:
                 st.session_state["logado"] = True
                 st.session_state["usuario"] = user
@@ -42,45 +41,23 @@ def tela_login():
             else:
                 st.error("Usuário ou senha inválidos")
 
-    # CADASTRO
     with abas[1]:
         novo = st.text_input("Novo usuário", key="cad_user")
         senha_nova = st.text_input("Senha", type="password", key="cad_senha")
         confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
 
-        if st.button("Criar conta", key="btn_cadastro"):
+        if st.button("Criar conta"):
             if novo in usuarios:
                 st.warning("Usuário já existe")
             elif senha_nova != confirmar:
                 st.warning("Senhas não conferem")
-            elif novo == "" or senha_nova == "":
-                st.warning("Preencha tudo")
             else:
-                usuarios[novo] = {
-                    "senha": senha_nova,
-                    "tipo": "corretor"
-                }
+                usuarios[novo] = {"senha": senha_nova, "tipo": "corretor"}
                 salvar_usuarios(usuarios)
-                st.success("Conta criada! Faça login.")
-
-def tela_admin():
-    st.sidebar.subheader("👤 Criar Corretor")
-
-    usuarios = carregar_usuarios()
-
-    novo = st.sidebar.text_input("Novo usuário", key="admin_user")
-    senha = st.sidebar.text_input("Senha", type="password", key="admin_senha")
-
-    if st.sidebar.button("Cadastrar", key="btn_admin"):
-        if novo in usuarios:
-            st.sidebar.warning("Já existe")
-        else:
-            usuarios[novo] = {"senha": senha, "tipo": "corretor"}
-            salvar_usuarios(usuarios)
-            st.sidebar.success("Criado!")
+                st.success("Conta criada!")
 
 def logout():
-    if st.sidebar.button("🚪 Sair", key="logout_btn"):
+    if st.sidebar.button("🚪 Sair"):
         st.session_state.clear()
         st.rerun()
 
@@ -94,9 +71,6 @@ if not st.session_state["logado"]:
 
 st.sidebar.write(f"👤 {st.session_state['usuario']}")
 logout()
-
-if st.session_state["tipo"] == "admin":
-    tela_admin()
 
 # ---------------- EMPREENDIMENTOS ----------------
 empreendimentos = {
@@ -130,17 +104,39 @@ def buscar(linha, nomes):
                 return limpar(linha[col])
     return 0.0
 
-def excel_para_pdf(arquivo_excel):
-    subprocess.run(["libreoffice", "--headless", "--convert-to", "pdf", arquivo_excel])
-    return arquivo_excel.replace(".xlsx", ".pdf")
+def excel_para_pdf(arquivo):
+    subprocess.run(["libreoffice", "--headless", "--convert-to", "pdf", arquivo])
+    return arquivo.replace(".xlsx", ".pdf")
 
+# ---------------- EXCEL ----------------
 def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb = load_workbook(modelo)
     ws = wb.active
 
+    # CLIENTE
     ws["E5"] = d["nome"]
     ws["D6"] = d["cpf"]
+    ws["J6"] = d["telefone"]
+    ws["O6"] = d["fixo"]
+    ws["D7"] = d["nacionalidade"]
+    ws["J7"] = d["profissao"]
+    ws["P7"] = d["fone_pref"]
+    ws["D8"] = d["estado_civil"]
+    ws["O8"] = d["renda"]
+    ws["E9"] = d["email"]
 
+    # CONJUGE
+    ws["G11"] = d["conjuge"]
+    ws["D13"] = d["cpf2"]
+    ws["J13"] = d["tel2"]
+    ws["O13"] = d["fixo2"]
+    ws["D14"] = d["nac2"]
+    ws["J14"] = d["prof2"]
+    ws["P14"] = d["fone2"]
+    ws["D15"] = d["civil2"]
+    ws["O15"] = d["renda2"]
+
+    # LOTE
     ws["G18"] = d["proprietario"]
     ws["G19"] = d["empreendimento"]
     ws["C20"] = d["logradouro"]
@@ -155,24 +151,12 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["C25"] = d["parcela_36"]
     ws["C26"] = d["saldo"]
 
-    ws["P24"] = "Fixo"
-    ws["P25"] = "Reajustável"
-    ws["P26"] = "Reajustável"
-    ws["P33"] = "À vista"
-    ws["P34"] = "Fixo"
-
+    # ENTRADA
     ws["B33"] = 1
     ws["C33"] = d["ato"]
 
-    ws["B34"] = d["parcelas_iguais"]
-    ws["C34"] = d["valor_parcela_igual"]
-
-    if d["usar_diferente"]:
-        ws["B35"] = 1
-        ws["C35"] = d["parcela_diferente"]
-        ws["G35"] = "Única"
-        ws["P35"] = "Fixa"
-        ws["K35"] = d["data_parcela_diferente"]
+    ws["B34"] = d["parcelas"]
+    ws["C34"] = d["valor_parcela"]
 
     arquivo = "proposta.xlsx"
     wb.save(arquivo)
@@ -180,14 +164,13 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 
 # ---------------- APP ----------------
 
-st.subheader("🏢 Empreendimento")
-emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp_select")
+emp_nome = st.selectbox("Empreendimento", list(empreendimentos.keys()))
 emp = empreendimentos[emp_nome]
 
 df = carregar_tabela(emp["tabela"])
 col = df.columns[0]
 
-unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote_select")
+unidade = st.selectbox("Lote", df[col].dropna().unique())
 linha = df[df[col] == unidade].iloc[0]
 
 valor_negocio = buscar(linha, ["valor negócio"])
@@ -195,54 +178,80 @@ entrada_imovel = buscar(linha, ["entrada imovel"])
 intermed = buscar(linha, ["intermediação"])
 parcela_36 = buscar(linha, ["36x"])
 saldo = buscar(linha, ["saldo"])
-area = buscar(linha, ["área", "area"])
+area = buscar(linha, ["área"])
 valor_imovel = buscar(linha, ["valor imóvel"])
 
 entrada_total = intermed + entrada_imovel
-ato_min = valor_negocio * 0.003
+ato = valor_negocio * 0.003
 
-st.subheader("Cliente")
-nome = st.text_input("Nome", key="nome_cliente")
-cpf = st.text_input("CPF", key="cpf_cliente")
+# ---------------- FORMULÁRIO ----------------
 
-st.subheader("Entrada")
-valor_cliente = st.number_input("Entrada do cliente", min_value=0.0, key="entrada_cliente")
+st.subheader("👤 Dados do Cliente")
 
-personalizar = st.checkbox("⚙️ Opções personalizáveis", key="personalizar")
+nome = st.text_input("Nome")
+cpf = st.text_input("CPF")
+telefone = st.text_input("Telefone")
+fixo = st.text_input("Fone fixo")
+nacionalidade = st.text_input("Nacionalidade")
+profissao = st.text_input("Profissão")
+fone_pref = st.text_input("Fone preferência")
+estado_civil = st.text_input("Estado civil")
+renda = st.text_input("Renda")
+email = st.text_input("Email")
 
-ato_manual = st.number_input("Valor de ato", min_value=0.0, key="ato_manual") if personalizar else 0
-ato = ato_manual if ato_manual > 0 else ato_min
+st.subheader("👫 Cônjuge / 2º Proponente")
+
+conjuge = st.text_input("Nome 2")
+cpf2 = st.text_input("CPF 2")
+tel2 = st.text_input("Telefone 2")
+fixo2 = st.text_input("Fixo 2")
+nac2 = st.text_input("Nacionalidade 2")
+prof2 = st.text_input("Profissão 2")
+fone2 = st.text_input("Fone preferência 2")
+civil2 = st.text_input("Estado civil 2")
+renda2 = st.text_input("Renda 2")
+
+st.subheader("💰 Entrada")
+
+valor_cliente = st.number_input("Valor entrada cliente", min_value=0.0)
+parcelas = st.slider("Parcelar entrada", 1, 4, 1)
 
 restante = entrada_total - valor_cliente
 if restante < 0: restante = 0
 
-parcelas = st.slider("Parcelar entrada", 1, 4, 1, key="parcelas")
+valor_parcela = restante / parcelas if parcelas > 0 else 0
 
-parcelas_iguais = parcelas
-valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
-usar_diferente = False
-parcela_diferente = 0
-data_parcela_diferente = ""
+# ---------------- PAINEL ----------------
+st.divider()
+st.subheader("📊 Painel de Conferência")
 
-if personalizar and parcelas > 1:
-    parcela_editada = st.number_input("Parcela diferente", min_value=0.0, key="parcela_diff")
-    restante_auto = restante - parcela_editada
-    if restante_auto < 0: restante_auto = 0
-
-    valor_parcela_igual = restante_auto / (parcelas - 1)
-
-    if abs(parcela_editada - valor_parcela_igual) > 0.01:
-        usar_diferente = True
-        parcela_diferente = parcela_editada
-        parcelas_iguais = parcelas - 1
-        data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
+st.write(f"Valor Negócio: R$ {valor_negocio:.2f}")
+st.write(f"Entrada Total: R$ {entrada_total:.2f}")
+st.write(f"Ato: R$ {ato:.2f}")
+st.write(f"Parcelas: {parcelas}x de R$ {valor_parcela:.2f}")
 
 # ---------------- GERAR ----------------
-if st.button("GERAR PDF", key="btn_pdf"):
-
+if st.button("GERAR PDF"):
     dados = {
         "nome": nome,
         "cpf": cpf,
+        "telefone": telefone,
+        "fixo": fixo,
+        "nacionalidade": nacionalidade,
+        "profissao": profissao,
+        "fone_pref": fone_pref,
+        "estado_civil": estado_civil,
+        "renda": renda,
+        "email": email,
+        "conjuge": conjuge,
+        "cpf2": cpf2,
+        "tel2": tel2,
+        "fixo2": fixo2,
+        "nac2": nac2,
+        "prof2": prof2,
+        "fone2": fone2,
+        "civil2": civil2,
+        "renda2": renda2,
         "proprietario": emp["proprietario"],
         "empreendimento": emp["nome"],
         "logradouro": emp["logradouro"],
@@ -255,15 +264,12 @@ if st.button("GERAR PDF", key="btn_pdf"):
         "parcela_36": parcela_36,
         "saldo": saldo,
         "ato": ato,
-        "parcelas_iguais": parcelas_iguais,
-        "valor_parcela_igual": valor_parcela_igual,
-        "usar_diferente": usar_diferente,
-        "parcela_diferente": parcela_diferente,
-        "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else ""
+        "parcelas": parcelas,
+        "valor_parcela": valor_parcela
     }
 
     excel = preencher_proposta(dados)
     pdf = excel_para_pdf(excel)
 
     with open(pdf, "rb") as f:
-        st.download_button("📥 Baixar PDF", f, file_name=f"Proposta_{unidade}.pdf", key="download_pdf")
+        st.download_button("📥 Baixar PDF", f, file_name="proposta.pdf")

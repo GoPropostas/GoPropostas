@@ -151,7 +151,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["C25"] = d["parcela_36"]
     ws["C26"] = d["saldo"]
 
-    # 🔥 BLOCO 24–26 (INCLUÍDO)
+    # 🔥 BLOCO 24–26 (ADICIONADO)
     ws["B24"] = 1
     ws["B25"] = 36
     ws["B26"] = 1
@@ -222,18 +222,53 @@ estado_civil = st.text_input("Estado civil", key="civil")
 renda = st.text_input("Renda", key="renda")
 email = st.text_input("Email", key="email")
 
-# 🔥 DATAS (INCLUÍDO)
+# 🔥 DATAS (ADICIONADO)
 st.subheader("📅 Datas de Pagamento")
-data_empreendedor = st.date_input("Data Vencimento Empreendedor")
-data_parcelas = st.date_input("Data Parcelas (36x)")
-data_saldo = st.date_input("Data Saldo Devedor")
+data_empreendedor = st.date_input("Data Vencimento Empreendedor", key="data_emp")
+data_parcelas = st.date_input("Data Parcelas (36x)", key="data_parc36")
+data_saldo = st.date_input("Data Saldo Devedor", key="data_saldo")
 
-# (resto do seu código continua igual...)
+# RESTO DO CÓDIGO CONTINUA IGUAL...
 
 # GERAR
 if st.button("GERAR PDF"):
     dados = {
-        # (seus dados continuam iguais...)
+        "nome": nome,
+        "cpf": cpf,
+        "telefone": telefone,
+        "fixo": fixo,
+        "nacionalidade": nacionalidade,
+        "profissao": profissao,
+        "fone_pref": fone_pref,
+        "estado_civil": estado_civil,
+        "renda": renda,
+        "email": email,
+        "conjuge": "",
+        "cpf2": "",
+        "tel2": "",
+        "fixo2": "",
+        "nac2": "",
+        "prof2": "",
+        "fone2": "",
+        "civil2": "",
+        "renda2": "",
+        "proprietario": emp["proprietario"],
+        "empreendimento": emp["nome"],
+        "logradouro": emp["logradouro"],
+        "unidade": unidade,
+        "area": area,
+        "valor_negocio": valor_negocio,
+        "entrada_total": entrada_total,
+        "valor_imovel": valor_imovel,
+        "entrada_imovel": entrada_imovel,
+        "parcela_36": parcela_36,
+        "saldo": saldo,
+        "ato": ato_min,
+        "parcelas_iguais": 1,
+        "valor_parcela_igual": 0,
+        "usar_diferente": False,
+        "parcela_diferente": 0,
+        "data_parcela_diferente": "",
         "data_empreendedor": data_empreendedor.strftime("%d/%m/%Y") if data_empreendedor else "",
         "data_parcelas": data_parcelas.strftime("%d/%m/%Y") if data_parcelas else "",
         "data_saldo": data_saldo.strftime("%d/%m/%Y") if data_saldo else ""

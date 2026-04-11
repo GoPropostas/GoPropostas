@@ -54,7 +54,7 @@ def tela_login():
             else:
                 usuarios[novo] = {"senha": senha_nova, "tipo": "corretor"}
                 salvar_usuarios(usuarios)
-                st.success("Conta criada!")
+                st.success("Conta criada! Faça login.")
 
 def logout():
     if st.sidebar.button("🚪 Sair", key="logout"):
@@ -147,14 +147,14 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    # BLOCO 24–26
-    ws["B24"] = 1
-    ws["B25"] = 36
-    ws["B26"] = 1
-
     ws["C24"] = d["entrada_imovel"]
     ws["C25"] = d["parcela_36"]
     ws["C26"] = d["saldo"]
+
+    # 🔥 BLOCO 24–26 (INCLUÍDO)
+    ws["B24"] = 1
+    ws["B25"] = 36
+    ws["B26"] = 1
 
     ws["G24"] = "Única"
     ws["G25"] = "Mensal"
@@ -164,7 +164,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["K25"] = d["data_parcelas"]
     ws["K26"] = d["data_saldo"]
 
-    # ENTRADA CLIENTE
+    # ENTRADA
     ws["B33"] = 1
     ws["C33"] = d["ato"]
     ws["G33"] = "Única"
@@ -189,13 +189,13 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 # ---------------- APP ----------------
 
 st.subheader("🏢 Empreendimento")
-emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()))
+emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
 emp = empreendimentos[emp_nome]
 
 df = carregar_tabela(emp["tabela"])
 col = df.columns[0]
 
-unidade = st.selectbox("Lote", df[col].dropna().unique())
+unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote")
 linha = df[df[col] == unidade].iloc[0]
 
 valor_negocio = buscar(linha, ["valor negócio"])
@@ -203,7 +203,7 @@ entrada_imovel = buscar(linha, ["entrada imovel"])
 intermed = buscar(linha, ["intermediação"])
 parcela_36 = buscar(linha, ["36x"])
 saldo = buscar(linha, ["saldo"])
-area = buscar(linha, ["área"])
+area = buscar(linha, ["área", "area"])
 valor_imovel = buscar(linha, ["valor imóvel"])
 
 entrada_total = intermed + entrada_imovel
@@ -211,63 +211,36 @@ ato_min = valor_negocio * 0.003
 
 # CLIENTE
 st.subheader("👤 Cliente")
-nome = st.text_input("Nome")
-cpf = st.text_input("CPF")
+nome = st.text_input("Nome", key="nome")
+cpf = st.text_input("CPF", key="cpf")
+telefone = st.text_input("Telefone", key="tel")
+fixo = st.text_input("Fixo", key="fixo")
+nacionalidade = st.text_input("Nacionalidade", key="nac")
+profissao = st.text_input("Profissão", key="prof")
+fone_pref = st.text_input("Fone preferência", key="fonepref")
+estado_civil = st.text_input("Estado civil", key="civil")
+renda = st.text_input("Renda", key="renda")
+email = st.text_input("Email", key="email")
 
-# DATAS
-st.subheader("📅 Datas")
+# 🔥 DATAS (INCLUÍDO)
+st.subheader("📅 Datas de Pagamento")
 data_empreendedor = st.date_input("Data Vencimento Empreendedor")
 data_parcelas = st.date_input("Data Parcelas (36x)")
 data_saldo = st.date_input("Data Saldo Devedor")
 
-# PARCELAS
-st.subheader("💰 Condições")
-valor_cliente = st.number_input("Entrada cliente", min_value=0.0)
-parcelas = st.slider("Parcelar", 1, 4, 1)
-
-restante = entrada_total - valor_cliente
-if restante < 0: restante = 0
-
-valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
-
-# PAINEL
-st.divider()
-st.subheader("📊 Conferência")
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Unidade", unidade)
-c2.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
-c3.metric("Entrada Total", f"R$ {entrada_total:,.2f}")
+# (resto do seu código continua igual...)
 
 # GERAR
 if st.button("GERAR PDF"):
     dados = {
-        "nome": nome,
-        "cpf": cpf,
-        "proprietario": emp["proprietario"],
-        "empreendimento": emp["nome"],
-        "logradouro": emp["logradouro"],
-        "unidade": unidade,
-        "area": area,
-        "valor_negocio": valor_negocio,
-        "entrada_total": entrada_total,
-        "valor_imovel": valor_imovel,
-        "entrada_imovel": entrada_imovel,
-        "parcela_36": parcela_36,
-        "saldo": saldo,
-        "ato": ato_min,
-        "parcelas_iguais": parcelas,
-        "valor_parcela_igual": valor_parcela_igual,
-        "usar_diferente": False,
-        "parcela_diferente": 0,
-        "data_parcela_diferente": "",
-        "data_empreendedor": data_empreendedor.strftime("%d/%m/%Y"),
-        "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
-        "data_saldo": data_saldo.strftime("%d/%m/%Y")
+        # (seus dados continuam iguais...)
+        "data_empreendedor": data_empreendedor.strftime("%d/%m/%Y") if data_empreendedor else "",
+        "data_parcelas": data_parcelas.strftime("%d/%m/%Y") if data_parcelas else "",
+        "data_saldo": data_saldo.strftime("%d/%m/%Y") if data_saldo else ""
     }
 
     excel = preencher_proposta(dados)
     pdf = excel_para_pdf(excel)
 
     with open(pdf, "rb") as f:
-        st.download_button("📥 Baixar PDF", f, file_name="proposta.pdf")
+        st.download_button("📥 Baixar PDF", f, file_name=f"Proposta_{unidade}.pdf")

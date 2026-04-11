@@ -26,15 +26,14 @@ def tela_login():
     st.title("🔐 Sistema de Propostas")
 
     abas = st.tabs(["Login", "Criar conta"])
-
     usuarios = carregar_usuarios()
 
     # LOGIN
     with abas[0]:
-        user = st.text_input("Usuário")
-        senha = st.text_input("Senha", type="password")
+        user = st.text_input("Usuário", key="login_user")
+        senha = st.text_input("Senha", type="password", key="login_senha")
 
-        if st.button("Entrar"):
+        if st.button("Entrar", key="btn_login"):
             if user in usuarios and usuarios[user]["senha"] == senha:
                 st.session_state["logado"] = True
                 st.session_state["usuario"] = user
@@ -43,13 +42,13 @@ def tela_login():
             else:
                 st.error("Usuário ou senha inválidos")
 
-    # CADASTRO LIVRE
+    # CADASTRO
     with abas[1]:
-        novo = st.text_input("Novo usuário")
-        senha_nova = st.text_input("Senha", type="password")
-        confirmar = st.text_input("Confirmar senha", type="password")
+        novo = st.text_input("Novo usuário", key="cad_user")
+        senha_nova = st.text_input("Senha", type="password", key="cad_senha")
+        confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
 
-        if st.button("Criar conta"):
+        if st.button("Criar conta", key="btn_cadastro"):
             if novo in usuarios:
                 st.warning("Usuário já existe")
             elif senha_nova != confirmar:
@@ -64,16 +63,15 @@ def tela_login():
                 salvar_usuarios(usuarios)
                 st.success("Conta criada! Faça login.")
 
-# ADMIN
 def tela_admin():
     st.sidebar.subheader("👤 Criar Corretor")
 
     usuarios = carregar_usuarios()
 
-    novo = st.sidebar.text_input("Novo usuário")
-    senha = st.sidebar.text_input("Senha", type="password")
+    novo = st.sidebar.text_input("Novo usuário", key="admin_user")
+    senha = st.sidebar.text_input("Senha", type="password", key="admin_senha")
 
-    if st.sidebar.button("Cadastrar"):
+    if st.sidebar.button("Cadastrar", key="btn_admin"):
         if novo in usuarios:
             st.sidebar.warning("Já existe")
         else:
@@ -82,7 +80,7 @@ def tela_admin():
             st.sidebar.success("Criado!")
 
 def logout():
-    if st.sidebar.button("🚪 Sair"):
+    if st.sidebar.button("🚪 Sair", key="logout_btn"):
         st.session_state.clear()
         st.rerun()
 
@@ -180,16 +178,16 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb.save(arquivo)
     return arquivo
 
-# ---------------- APP ORIGINAL (SEM QUEBRAR) ----------------
+# ---------------- APP ----------------
 
 st.subheader("🏢 Empreendimento")
-emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()))
+emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp_select")
 emp = empreendimentos[emp_nome]
 
 df = carregar_tabela(emp["tabela"])
 col = df.columns[0]
 
-unidade = st.selectbox("Lote", df[col].dropna().unique())
+unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote_select")
 linha = df[df[col] == unidade].iloc[0]
 
 valor_negocio = buscar(linha, ["valor negócio"])
@@ -204,21 +202,21 @@ entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
 st.subheader("Cliente")
-nome = st.text_input("Nome")
-cpf = st.text_input("CPF")
+nome = st.text_input("Nome", key="nome_cliente")
+cpf = st.text_input("CPF", key="cpf_cliente")
 
 st.subheader("Entrada")
-valor_cliente = st.number_input("Entrada do cliente", min_value=0.0)
+valor_cliente = st.number_input("Entrada do cliente", min_value=0.0, key="entrada_cliente")
 
-personalizar = st.checkbox("⚙️ Opções personalizáveis")
+personalizar = st.checkbox("⚙️ Opções personalizáveis", key="personalizar")
 
-ato_manual = st.number_input("Valor de ato", min_value=0.0) if personalizar else 0
+ato_manual = st.number_input("Valor de ato", min_value=0.0, key="ato_manual") if personalizar else 0
 ato = ato_manual if ato_manual > 0 else ato_min
 
 restante = entrada_total - valor_cliente
 if restante < 0: restante = 0
 
-parcelas = st.slider("Parcelar entrada", 1, 4, 1)
+parcelas = st.slider("Parcelar entrada", 1, 4, 1, key="parcelas")
 
 parcelas_iguais = parcelas
 valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
@@ -227,7 +225,7 @@ parcela_diferente = 0
 data_parcela_diferente = ""
 
 if personalizar and parcelas > 1:
-    parcela_editada = st.number_input("Parcela diferente", min_value=0.0)
+    parcela_editada = st.number_input("Parcela diferente", min_value=0.0, key="parcela_diff")
     restante_auto = restante - parcela_editada
     if restante_auto < 0: restante_auto = 0
 
@@ -237,18 +235,11 @@ if personalizar and parcelas > 1:
         usar_diferente = True
         parcela_diferente = parcela_editada
         parcelas_iguais = parcelas - 1
-        data_parcela_diferente = st.date_input("Data parcela diferente")
-
-# ---------------- CONFERÊNCIA ----------------
-st.divider()
-st.subheader("📊 Conferência")
-
-st.write(f"Entrada total: R$ {entrada_total:.2f}")
-st.write(f"Ato: R$ {ato:.2f}")
-st.write(f"Parcelas: {parcelas}")
+        data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
 
 # ---------------- GERAR ----------------
-if st.button("GERAR PDF"):
+if st.button("GERAR PDF", key="btn_pdf"):
+
     dados = {
         "nome": nome,
         "cpf": cpf,
@@ -275,4 +266,4 @@ if st.button("GERAR PDF"):
     pdf = excel_para_pdf(excel)
 
     with open(pdf, "rb") as f:
-        st.download_button("📥 Baixar PDF", f, file_name=f"Proposta_{unidade}.pdf")
+        st.download_button("📥 Baixar PDF", f, file_name=f"Proposta_{unidade}.pdf", key="download_pdf")

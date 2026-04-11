@@ -1,84 +1,171 @@
-import streamlit as st
+import os
+import subprocess
+from datetime import datetime
+
 import pandas as pd
+import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
-import subprocess
-import os
-import json
-from datetime import datetime
+from supabase import Client, create_client
 
 st.set_page_config(page_title="Sistema de Propostas", layout="centered")
 
-# ---------------- USUÁRIOS ----------------
-USUARIOS_FILE = "usuarios.json"
+# ---------------- SUPABASE ----------------
+@st.cache_resource
+def get_supabase() -> Client:
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"],
+    )
 
-def carregar_usuarios():
-    if not os.path.exists(USUARIOS_FILE):
-        return {}
-    try:
-        with open(USUARIOS_FILE, "r", encoding="utf-8") as f:
-            conteudo = f.read().strip()
-            if not conteudo:
-                return {}
-            return json.loads(conteudo)
-    except:
-        return {}
+def buscar_profile_por_id(user_id: str):
+    supabase = get_supabase()
+    resp = (
+        supabase.table("profiles")
+        .select("*")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    return resp.data[0] if resp.data else None
 
-def salvar_usuarios(users):
-    with open(USUARIOS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=4, ensure_ascii=False)
+def buscar_profile_por_email(email: str):
+    supabase = get_supabase()
+    resp = (
+        supabase.table("profiles")
+        .select("*")
+        .eq("email", email)
+        .limit(1)
+        .execute()
+    )
+    return resp.data[0] if resp.data else None
 
-# ---------------- LOGIN ----------------
+def criar_profile(user_id: str, email: str, nome: str, tipo: str = "corretor"):
+    supabase = get_supabase()
+    payload = {
+        "id": user_id,
+        "email": email,
+        "nome": nome,
+        "tipo": tipo,
+    }
+    return supabase.table("profiles").upsert(payload).execute()
+
+def login_com_supabase(email: str, senha: str):
+    supabase = get_supabase()
+    return supabase.auth.sign_in_with_password({
+        "email": email,
+        "password": senha,
+    })
+
+def cadastrar_com_supabase(email: str, senha: str):
+    supabase = get_supabase()
+    return supabase.auth.sign_up({
+        "email": email,
+        "password": senha,
+    })
+
+def init_auth_state():
+    defaults = {
+        "logado": False,
+        "usuario_email": "",
+        "usuario_nome": "",
+        "tipo": "",
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
+
+def aplicar_login(profile: dict):
+    st.session_state["logado"] = True
+    st.session_state["usuario_email"] = profile["email"]
+    st.session_state["usuario_nome"] = profile.get("nome") or profile["email"]
+    st.session_state["tipo"] = profile["tipo"]
+
 def tela_login():
     st.title("🔐 Sistema de Propostas")
 
     abas = st.tabs(["Login", "Criar conta"])
-    usuarios = carregar_usuarios()
 
     with abas[0]:
-        user = st.text_input("Usuário", key="login_user")
+        email = st.text_input("Email", key="login_email")
         senha = st.text_input("Senha", type="password", key="login_senha")
 
         if st.button("Entrar", key="btn_login", use_container_width=True):
-            if user in usuarios and usuarios[user]["senha"] == senha:
-                st.session_state["logado"] = True
-                st.session_state["usuario"] = user
-                st.session_state["tipo"] = usuarios[user]["tipo"]
+            try:
+                resp = login_com_supabase(email, senha)
+                user = resp.user
+
+                if not user:
+                    st.error("Email ou senha inválidos.")
+                    return
+
+                profile = buscar_profile_por_id(user.id)
+                if not profile:
+                    criar_profile(user.id, user.email, user.email.split("@")[0], "corretor")
+                    profile = buscar_profile_por_id(user.id)
+
+                aplicar_login(profile)
+                st.success("Login realizado com sucesso!")
                 st.rerun()
-            else:
-                st.error("Usuário ou senha inválidos")
+
+            except Exception as e:
+                st.error(f"Erro no login: {e}")
 
     with abas[1]:
-        novo = st.text_input("Novo usuário", key="cad_user")
-        senha_nova = st.text_input("Senha", type="password", key="cad_senha")
+        nome = st.text_input("Nome completo", key="cad_nome")
+        email = st.text_input("Email", key="cad_email")
+        senha = st.text_input("Senha", type="password", key="cad_senha")
         confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
 
         if st.button("Criar conta", key="btn_cadastro", use_container_width=True):
-            if novo in usuarios:
-                st.warning("Usuário já existe")
-            elif senha_nova != confirmar:
-                st.warning("Senhas não conferem")
-            elif not novo.strip() or not senha_nova.strip():
-                st.warning("Preencha todos os campos")
-            else:
-                usuarios[novo] = {"senha": senha_nova, "tipo": "corretor"}
-                salvar_usuarios(usuarios)
-                st.success("Conta criada! Faça login.")
+            if senha != confirmar:
+                st.warning("Senhas não conferem.")
+                return
+            if not nome.strip() or not email.strip() or not senha.strip():
+                st.warning("Preencha todos os campos.")
+                return
+
+            try:
+                existente = buscar_profile_por_email(email)
+                if existente:
+                    st.warning("Já existe uma conta com esse email.")
+                    return
+
+                resp = cadastrar_com_supabase(email, senha)
+                user = resp.user
+
+                if user:
+                    criar_profile(user.id, email, nome, "corretor")
+                    st.success("Conta criada com sucesso! Agora faça login.")
+                else:
+                    st.success("Conta criada! Verifique seu email para confirmar o cadastro antes de entrar.")
+
+            except Exception as e:
+                st.error(f"Erro ao criar conta: {e}")
 
 def logout():
     if st.sidebar.button("🚪 Sair", key="logout", use_container_width=True):
-        st.session_state.clear()
+        try:
+            get_supabase().auth.sign_out()
+        except Exception:
+            pass
+
+        for chave in ["logado", "usuario_email", "usuario_nome", "tipo"]:
+            if chave in st.session_state:
+                del st.session_state[chave]
+
         st.rerun()
 
 # ---------------- CONTROLE LOGIN ----------------
-if "logado" not in st.session_state:
-    st.session_state["logado"] = False
+init_auth_state()
 
 if not st.session_state["logado"]:
     tela_login()
     st.stop()
 
-st.sidebar.write(f"👤 {st.session_state['usuario']}")
+st.sidebar.write(f"👤 {st.session_state['usuario_nome']}")
+st.sidebar.write(f"📧 {st.session_state['usuario_email']}")
+st.sidebar.write(f"🔑 {st.session_state['tipo']}")
 logout()
 
 # ---------------- EMPREENDIMENTOS ----------------
@@ -87,10 +174,11 @@ empreendimentos = {
         "proprietario": "Frei Galvão empreendimentos imobiliários",
         "nome": "Loteamento Frei Galvão",
         "logradouro": "Avenida Fazenda Bananal",
-        "tabela": "tabela_frei_galvao.xlsx"
+        "tabela": "tabela_frei_galvao.xlsx",
     }
 }
 
+# ---------------- UTILITÁRIOS ----------------
 @st.cache_data
 def carregar_tabela(arquivo):
     df = pd.read_excel(arquivo, skiprows=11)
@@ -105,7 +193,7 @@ def limpar(valor):
     texto = str(valor).replace("R$", "").replace(".", "").replace(",", ".")
     try:
         return float(texto)
-    except:
+    except Exception:
         return 0.0
 
 def buscar(linha, nomes):
@@ -118,7 +206,7 @@ def buscar(linha, nomes):
 def excel_para_pdf(arquivo):
     subprocess.run(
         ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
-        check=False
+        check=False,
     )
     return arquivo.replace(".xlsx", ".pdf")
 
@@ -139,7 +227,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["O8"] = d["renda"]
     ws["E9"] = d["email"]
 
-    # CONJUGE
+    # CÔNJUGE
     ws["G11"] = d["conjuge"]
     ws["D13"] = d["cpf2"]
     ws["J13"] = d["tel2"]
@@ -327,7 +415,6 @@ st.metric("Restante Entrada", f"R$ {restante:,.2f}")
 st.metric("Parcelas", parcelas)
 
 st.markdown("### 📅 Parcelamento")
-
 if parcelas > 1:
     if usar_diferente:
         st.warning(
@@ -389,7 +476,7 @@ if st.button("GERAR PDF", use_container_width=True):
         "data_saldo": data_saldo.strftime("%d/%m/%Y"),
         "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
         "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
-        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else ""
+        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else "",
     }
 
     excel = preencher_proposta(dados)
@@ -403,7 +490,7 @@ if st.button("GERAR PDF", use_container_width=True):
             f_pdf,
             file_name=f"Proposta_{unidade}.pdf",
             mime="application/pdf",
-            use_container_width=True
+            use_container_width=True,
         )
 
     with open(excel, "rb") as f_excel:
@@ -412,5 +499,5 @@ if st.button("GERAR PDF", use_container_width=True):
             f_excel,
             file_name=f"Proposta_{unidade}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            use_container_width=True,
         )

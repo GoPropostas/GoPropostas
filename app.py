@@ -3,9 +3,62 @@ import pandas as pd
 from openpyxl import load_workbook
 import subprocess
 import os
+import json
 from datetime import datetime
 
 st.set_page_config(layout="wide")
+
+# ---------------- USUÁRIOS ----------------
+USUARIOS_FILE = "usuarios.json"
+
+def carregar_usuarios():
+    if not os.path.exists(USUARIOS_FILE):
+        return {}
+    with open(USUARIOS_FILE, "r") as f:
+        return json.load(f)
+
+def salvar_usuarios(users):
+    with open(USUARIOS_FILE, "w") as f:
+        json.dump(users, f, indent=4)
+
+# ---------------- LOGIN ----------------
+def tela_login():
+    st.title("🔐 Login")
+
+    usuarios = carregar_usuarios()
+
+    user = st.text_input("Usuário")
+    senha = st.text_input("Senha", type="password")
+
+    if st.button("Entrar"):
+        if user in usuarios and usuarios[user]["senha"] == senha:
+            st.session_state["logado"] = True
+            st.session_state["usuario"] = user
+            st.session_state["tipo"] = usuarios[user]["tipo"]
+            st.rerun()
+        else:
+            st.error("Usuário ou senha inválidos")
+
+def tela_admin():
+    st.subheader("👤 Cadastrar Corretor")
+
+    usuarios = carregar_usuarios()
+
+    novo = st.text_input("Novo usuário")
+    senha = st.text_input("Senha", type="password")
+
+    if st.button("Cadastrar"):
+        if novo in usuarios:
+            st.warning("Usuário já existe")
+        else:
+            usuarios[novo] = {"senha": senha, "tipo": "corretor"}
+            salvar_usuarios(usuarios)
+            st.success("Corretor cadastrado!")
+
+def logout():
+    if st.sidebar.button("🚪 Sair"):
+        st.session_state.clear()
+        st.rerun()
 
 # ---------------- EMPREENDIMENTOS ----------------
 empreendimentos = {
@@ -42,27 +95,21 @@ def buscar(linha, nomes):
     return 0.0
 
 def excel_para_pdf(arquivo_excel):
-    pasta = os.path.dirname(os.path.abspath(arquivo_excel))
     subprocess.run([
         "libreoffice", "--headless", "--convert-to", "pdf",
-        arquivo_excel, "--outdir", pasta
+        arquivo_excel
     ])
     return arquivo_excel.replace(".xlsx", ".pdf")
 
 # ---------------- EXCEL ----------------
 def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 
-    if not os.path.exists(modelo):
-        raise FileNotFoundError("Modelo não encontrado")
-
     wb = load_workbook(modelo)
     ws = wb.active
 
-    # CLIENTE
     ws["E5"] = d["nome"]
     ws["D6"] = d["cpf"]
 
-    # EMPREENDIMENTO
     ws["G18"] = d["proprietario"]
     ws["G19"] = d["empreendimento"]
     ws["C20"] = d["logradouro"]
@@ -73,45 +120,49 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    # TABELA
-    ws["B24"] = 1
-    ws["B25"] = 36
-    ws["B26"] = 1
-
     ws["C24"] = d["entrada_imovel"]
     ws["C25"] = d["parcela_36"]
     ws["C26"] = d["saldo"]
 
-    ws["G24"] = "Única"
-    ws["G25"] = "Mensal"
-    ws["G26"] = "Única"
-
-    # COLUNA P
     ws["P24"] = "Fixo"
     ws["P25"] = "Reajustável"
     ws["P26"] = "Reajustável"
     ws["P33"] = "À vista"
     ws["P34"] = "Fixo"
 
-    # ENTRADA
+    ws["B33"] = 1
     ws["C33"] = d["ato"]
-    ws["C34"] = d["parcela_entrada"]
+
+    ws["B34"] = d["parcelas_iguais"]
+    ws["C34"] = d["valor_parcela_igual"]
+
+    if d["usar_diferente"]:
+        ws["B35"] = 1
+        ws["C35"] = d["parcela_diferente"]
+        ws["G35"] = "Única"
+        ws["P35"] = "Fixa"
+        ws["K35"] = d["data_parcela_diferente"]
 
     arquivo = "proposta.xlsx"
     wb.save(arquivo)
     return arquivo
 
+# ---------------- CONTROLE LOGIN ----------------
+if "logado" not in st.session_state:
+    st.session_state["logado"] = False
+
+if not st.session_state["logado"]:
+    tela_login()
+    st.stop()
+
+st.sidebar.write(f"👤 {st.session_state['usuario']}")
+logout()
+
+if st.session_state["tipo"] == "admin":
+    tela_admin()
+
 # ---------------- APP ----------------
-
-st.sidebar.title("Sistema")
-
-if st.sidebar.button("🔄 Atualizar tabela"):
-    st.cache_data.clear()
-    st.success("Tabela atualizada!")
-
-# EMPREENDIMENTO
-st.subheader("🏢 Empreendimento")
-emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()))
+emp_nome = st.selectbox("Empreendimento", list(empreendimentos.keys()))
 emp = empreendimentos[emp_nome]
 
 df = carregar_tabela(emp["tabela"])
@@ -120,140 +171,86 @@ col = df.columns[0]
 unidade = st.selectbox("Lote", df[col].dropna().unique())
 linha = df[df[col] == unidade].iloc[0]
 
-# VALORES
 valor_negocio = buscar(linha, ["valor negócio"])
 entrada_imovel = buscar(linha, ["entrada imovel"])
 intermed = buscar(linha, ["intermediação"])
 parcela_36 = buscar(linha, ["36x"])
 saldo = buscar(linha, ["saldo"])
-area = buscar(linha, ["área", "area"])
+area = buscar(linha, ["área"])
 valor_imovel = buscar(linha, ["valor imóvel"])
 
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
-# CLIENTE
-st.subheader("Cliente")
 nome = st.text_input("Nome")
 cpf = st.text_input("CPF")
 
-# ENTRADA
-st.subheader("Entrada")
 valor_cliente = st.number_input("Entrada do cliente", min_value=0.0)
 
-# PERSONALIZAÇÃO
-personalizar = st.checkbox("⚙️ Opções personalizáveis")
+personalizar = st.checkbox("Opções personalizáveis")
 
-if personalizar:
-    ato_manual = st.number_input("Valor de ato", min_value=0.0)
-else:
-    ato_manual = 0
-
-# ATO
+ato_manual = st.number_input("Valor de ato", min_value=0.0) if personalizar else 0
 ato = ato_manual if ato_manual > 0 else ato_min
 
-# PARCELAS
 restante = entrada_total - valor_cliente
-if restante < 0:
-    restante = 0
+if restante < 0: restante = 0
 
 parcelas = st.slider("Parcelar entrada", 1, 4, 1)
 
-parcelas_lista = []
+parcelas_iguais = parcelas
+valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
+usar_diferente = False
+parcela_diferente = 0
+data_parcela_diferente = ""
 
 if personalizar and parcelas > 1:
-    st.write("Parcelas personalizadas")
-    soma = 0
+    parcela_editada = st.number_input("Parcela diferente", min_value=0.0)
+    restante_auto = restante - parcela_editada
+    if restante_auto < 0: restante_auto = 0
 
-    for i in range(parcelas):
-        val = st.number_input(f"Parcela {i+1}", min_value=0.0, key=i)
-        parcelas_lista.append(val)
-        soma += val
-
-    parcela_entrada = parcelas_lista[0] if parcelas_lista else 0
-
-else:
-    parcela_entrada = restante / parcelas if parcelas > 1 else 0
+    valor_parcela_igual = restante_auto / (parcelas - 1)
+    
+    if abs(parcela_editada - valor_parcela_igual) > 0.01:
+        usar_diferente = True
+        parcela_diferente = parcela_editada
+        parcelas_iguais = parcelas - 1
+        data_parcela_diferente = st.date_input("Data parcela diferente")
 
 # ---------------- CONFERÊNCIA ----------------
-
 st.divider()
-st.subheader("📊 Conferência da Proposta")
+st.subheader("Conferência")
 
-c1, c2, c3 = st.columns(3)
-
-c1.metric("Unidade", unidade)
-c1.metric("Área", f"{area:.2f}")
-
-c2.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
-c2.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
-
-c3.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
-c3.metric("Intermediação", f"R$ {intermed:,.2f}")
-
-st.info(f"Entrada Total: R$ {entrada_total:,.2f}")
-
-c4, c5, c6 = st.columns(3)
-
-c4.metric("Entrada Cliente", f"R$ {valor_cliente:,.2f}")
-c5.metric("Ato", f"R$ {ato:,.2f}")
-
-restante_entrada = entrada_total - valor_cliente
-if restante_entrada < 0:
-    restante_entrada = 0
-
-c6.metric("Restante", f"R$ {restante_entrada:,.2f}")
-
-if parcelas > 1:
-    if personalizar:
-        soma_parcelas = sum(parcelas_lista)
-        st.warning(f"Soma parcelas: {soma_parcelas:.2f}")
-        if abs(soma_parcelas - restante_entrada) > 0.01:
-            st.error("Parcelas não fecham")
-    else:
-        st.success(f"{parcelas}x de R$ {parcela_entrada:.2f}")
-
-if ato > valor_cliente:
-    st.error("Ato maior que entrada!")
+st.write(f"Entrada total: R$ {entrada_total:.2f}")
+st.write(f"Ato: R$ {ato:.2f}")
+st.write(f"Parcelas: {parcelas}")
 
 # ---------------- GERAR ----------------
-
 if st.button("GERAR PDF"):
-    try:
-        dados = {
-            "nome": nome,
-            "cpf": cpf,
-            "proprietario": emp["proprietario"],
-            "empreendimento": emp["nome"],
-            "logradouro": emp["logradouro"],
-            "unidade": unidade,
-            "area": area,
-            "valor_negocio": valor_negocio,
-            "entrada_total": entrada_total,
-            "valor_imovel": valor_imovel,
-            "entrada_imovel": entrada_imovel,
-            "parcela_36": parcela_36,
-            "saldo": saldo,
-            "ato": ato,
-            "parcela_entrada": parcela_entrada
-        }
 
-        excel = preencher_proposta(dados)
-        pdf = excel_para_pdf(excel)
+    dados = {
+        "nome": nome,
+        "cpf": cpf,
+        "proprietario": emp["proprietario"],
+        "empreendimento": emp["nome"],
+        "logradouro": emp["logradouro"],
+        "unidade": unidade,
+        "area": area,
+        "valor_negocio": valor_negocio,
+        "entrada_total": entrada_total,
+        "valor_imovel": valor_imovel,
+        "entrada_imovel": entrada_imovel,
+        "parcela_36": parcela_36,
+        "saldo": saldo,
+        "ato": ato,
+        "parcelas_iguais": parcelas_iguais,
+        "valor_parcela_igual": valor_parcela_igual,
+        "usar_diferente": usar_diferente,
+        "parcela_diferente": parcela_diferente,
+        "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else ""
+    }
 
-        if os.path.exists(pdf):
-            with open(pdf, "rb") as f:
-                st.download_button(
-                    "📥 Baixar PDF",
-                    f,
-                    file_name=f"Proposta_{unidade}.pdf",
-                    mime="application/pdf"
-                )
+    excel = preencher_proposta(dados)
+    pdf = excel_para_pdf(excel)
 
-            st.success("Proposta gerada!")
-
-        else:
-            st.error("Erro ao gerar PDF")
-
-    except Exception as e:
-        st.error(f"Erro: {e}")
+    with open(pdf, "rb") as f:
+        st.download_button("Baixar PDF", f, file_name=f"Proposta_{unidade}.pdf")

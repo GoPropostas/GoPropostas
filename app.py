@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.styles import Alignment
 import subprocess
 import os
 import json
@@ -178,18 +179,28 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["C33"] = d["ato"]
     ws["G33"] = "Única"
     ws["P33"] = "À vista"
+    ws["K33"] = d["data_ato"]
 
     ws["B34"] = d["parcelas_iguais"]
     ws["C34"] = d["valor_parcela_igual"]
     ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
     ws["P34"] = "Fixo"
+    ws["K34"] = d["data_parc_entrada"]
+
+    # Centralizar datas da entrada
+    ws["K33"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
 
     if d["usar_diferente"]:
         ws["B35"] = 1
         ws["C35"] = d["parcela_diferente"]
         ws["G35"] = "Única"
         ws["P35"] = "Fixa"
-        ws["K35"] = d["data_parcela_diferente"]
+        ws["K35"] = d["data_parcela_diferente_manual"]
+
+        # Centralização solicitada
+        for cel in ["B35", "G35", "K35", "P35"]:
+            ws[cel].alignment = Alignment(horizontal="center", vertical="center")
 
     arquivo = "proposta.xlsx"
     wb.save(arquivo)
@@ -251,6 +262,16 @@ with col_d2:
     data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
 with col_d3:
     data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
+
+# Novas datas da entrada
+st.subheader("📅 Datas da Entrada")
+col_e1, col_e2, col_e3 = st.columns(3)
+with col_e1:
+    data_ato = st.date_input("Data do ato", key="data_ato")
+with col_e2:
+    data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
+with col_e3:
+    data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
 
 # PARCELAS INTELIGENTES
 st.subheader("💰 Condições")
@@ -380,7 +401,10 @@ if st.button("GERAR PDF"):
         "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else "",
         "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
         "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
-        "data_saldo": data_saldo.strftime("%d/%m/%Y")
+        "data_saldo": data_saldo.strftime("%d/%m/%Y"),
+        "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
+        "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
+        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else ""
     }
 
     excel = preencher_proposta(dados)

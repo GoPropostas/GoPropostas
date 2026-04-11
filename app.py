@@ -147,7 +147,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    # BLOCO 24-26
+    # BLOCO 24–26
     ws["B24"] = 1
     ws["C24"] = d["entrada_imovel"]
     ws["G24"] = "Única"
@@ -163,7 +163,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["G26"] = "Única"
     ws["K26"] = d["data_saldo"]
 
-    # 🔥 NOVO
+    # 🔥 ALTERAÇÃO SOLICITADA
     ws["P24"] = "Fixo"
     ws["P25"] = "Reajustável"
     ws["P26"] = "Reajustável"
@@ -176,101 +176,16 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 
     ws["B34"] = d["parcelas_iguais"]
     ws["C34"] = d["valor_parcela_igual"]
-    ws["G34"] = "Mensal"
+    ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
     ws["P34"] = "Fixo"
+
+    if d["usar_diferente"]:
+        ws["B35"] = 1
+        ws["C35"] = d["parcela_diferente"]
+        ws["G35"] = "Única"
+        ws["P35"] = "Fixa"
+        ws["K35"] = d["data_parcela_diferente"]
 
     arquivo = "proposta.xlsx"
     wb.save(arquivo)
     return arquivo
-
-# ---------------- APP ----------------
-
-st.subheader("🏢 Empreendimento")
-emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()))
-emp = empreendimentos[emp_nome]
-
-df = carregar_tabela(emp["tabela"])
-col = df.columns[0]
-
-unidade = st.selectbox("Lote", df[col].dropna().unique())
-linha = df[df[col] == unidade].iloc[0]
-
-valor_negocio = buscar(linha, ["valor negócio"])
-entrada_imovel = buscar(linha, ["entrada imovel"])
-intermed = buscar(linha, ["intermediação"])
-parcela_36 = buscar(linha, ["36x"])
-saldo = buscar(linha, ["saldo"])
-area = buscar(linha, ["área"])
-valor_imovel = buscar(linha, ["valor imóvel"])
-
-entrada_total = intermed + entrada_imovel
-ato_min = valor_negocio * 0.003
-
-# CONDIÇÕES
-st.subheader("💰 Condições")
-valor_cliente = st.number_input("Entrada cliente", min_value=0.0)
-
-ato = ato_min
-
-valor_para_entrada = valor_cliente - ato
-if valor_para_entrada < 0:
-    valor_para_entrada = 0
-
-restante = entrada_total - valor_para_entrada
-if restante < 0:
-    restante = 0
-
-parcelas = st.slider("Parcelas", 1, 4, 1)
-valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
-
-# PAINEL
-st.subheader("📊 Painel de Cálculo")
-st.write(f"Restante: R$ {restante:,.2f}")
-st.write(f"Parcelas: {parcelas}x de R$ {valor_parcela_igual:,.2f}")
-
-# GERAR
-if st.button("GERAR PDF"):
-    dados = {
-        "nome": "",
-        "cpf": "",
-        "telefone": "",
-        "fixo": "",
-        "nacionalidade": "",
-        "profissao": "",
-        "fone_pref": "",
-        "estado_civil": "",
-        "renda": "",
-        "email": "",
-        "conjuge": "",
-        "cpf2": "",
-        "tel2": "",
-        "fixo2": "",
-        "nac2": "",
-        "prof2": "",
-        "fone2": "",
-        "civil2": "",
-        "renda2": "",
-        "proprietario": emp["proprietario"],
-        "empreendimento": emp["nome"],
-        "logradouro": emp["logradouro"],
-        "unidade": unidade,
-        "area": area,
-        "valor_negocio": valor_negocio,
-        "entrada_total": entrada_total,
-        "valor_imovel": valor_imovel,
-        "entrada_imovel": entrada_imovel,
-        "parcela_36": parcela_36,
-        "saldo": saldo,
-        "ato": ato,
-        "parcelas_iguais": parcelas,
-        "valor_parcela_igual": valor_parcela_igual,
-        "data_venc_emp": "",
-        "data_parcelas": "",
-        "data_saldo": ""
-    }
-
-    excel = preencher_proposta(dados)
-    pdf = excel_para_pdf(excel)
-
-    with open(pdf, "rb") as f:
-        st.download_button("📥 Baixar PDF", f)

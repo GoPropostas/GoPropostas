@@ -32,7 +32,7 @@ def tela_login():
         user = st.text_input("Usuário", key="login_user")
         senha = st.text_input("Senha", type="password", key="login_senha")
 
-        if st.button("Entrar"):
+        if st.button("Entrar", key="btn_login"):
             if user in usuarios and usuarios[user]["senha"] == senha:
                 st.session_state["logado"] = True
                 st.session_state["usuario"] = user
@@ -46,7 +46,7 @@ def tela_login():
         senha_nova = st.text_input("Senha", type="password", key="cad_senha")
         confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
 
-        if st.button("Criar conta"):
+        if st.button("Criar conta", key="btn_cadastro"):
             if novo in usuarios:
                 st.warning("Usuário já existe")
             elif senha_nova != confirmar:
@@ -54,10 +54,10 @@ def tela_login():
             else:
                 usuarios[novo] = {"senha": senha_nova, "tipo": "corretor"}
                 salvar_usuarios(usuarios)
-                st.success("Conta criada!")
+                st.success("Conta criada! Faça login.")
 
 def logout():
-    if st.sidebar.button("🚪 Sair"):
+    if st.sidebar.button("🚪 Sair", key="logout"):
         st.session_state.clear()
         st.rerun()
 
@@ -154,9 +154,20 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     # ENTRADA
     ws["B33"] = 1
     ws["C33"] = d["ato"]
+    ws["G33"] = "Única"
+    ws["P33"] = "À vista"
 
-    ws["B34"] = d["parcelas"]
-    ws["C34"] = d["valor_parcela"]
+    ws["B34"] = d["parcelas_iguais"]
+    ws["C34"] = d["valor_parcela_igual"]
+    ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
+    ws["P34"] = "Fixo"
+
+    if d["usar_diferente"]:
+        ws["B35"] = 1
+        ws["C35"] = d["parcela_diferente"]
+        ws["G35"] = "Única"
+        ws["P35"] = "Fixa"
+        ws["K35"] = d["data_parcela_diferente"]
 
     arquivo = "proposta.xlsx"
     wb.save(arquivo)
@@ -164,13 +175,14 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
 
 # ---------------- APP ----------------
 
-emp_nome = st.selectbox("Empreendimento", list(empreendimentos.keys()))
+st.subheader("🏢 Empreendimento")
+emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
 emp = empreendimentos[emp_nome]
 
 df = carregar_tabela(emp["tabela"])
 col = df.columns[0]
 
-unidade = st.selectbox("Lote", df[col].dropna().unique())
+unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote")
 linha = df[df[col] == unidade].iloc[0]
 
 valor_negocio = buscar(linha, ["valor negócio"])
@@ -178,59 +190,96 @@ entrada_imovel = buscar(linha, ["entrada imovel"])
 intermed = buscar(linha, ["intermediação"])
 parcela_36 = buscar(linha, ["36x"])
 saldo = buscar(linha, ["saldo"])
-area = buscar(linha, ["área"])
+area = buscar(linha, ["área", "area"])
 valor_imovel = buscar(linha, ["valor imóvel"])
 
 entrada_total = intermed + entrada_imovel
-ato = valor_negocio * 0.003
+ato_min = valor_negocio * 0.003
 
-# ---------------- FORMULÁRIO ----------------
+# CLIENTE
+st.subheader("👤 Cliente")
+nome = st.text_input("Nome", key="nome")
+cpf = st.text_input("CPF", key="cpf")
+telefone = st.text_input("Telefone", key="tel")
+fixo = st.text_input("Fixo", key="fixo")
+nacionalidade = st.text_input("Nacionalidade", key="nac")
+profissao = st.text_input("Profissão", key="prof")
+fone_pref = st.text_input("Fone preferência", key="fonepref")
+estado_civil = st.text_input("Estado civil", key="civil")
+renda = st.text_input("Renda", key="renda")
+email = st.text_input("Email", key="email")
 
-st.subheader("👤 Dados do Cliente")
+# CONJUGE
+st.subheader("👫 Cônjuge")
+conjuge = st.text_input("Nome", key="conj")
+cpf2 = st.text_input("CPF", key="cpf2")
+tel2 = st.text_input("Telefone", key="tel2")
+fixo2 = st.text_input("Fixo", key="fixo2")
+nac2 = st.text_input("Nacionalidade", key="nac2")
+prof2 = st.text_input("Profissão", key="prof2")
+fone2 = st.text_input("Fone preferência", key="fone2")
+civil2 = st.text_input("Estado civil", key="civil2")
+renda2 = st.text_input("Renda", key="renda2")
 
-nome = st.text_input("Nome")
-cpf = st.text_input("CPF")
-telefone = st.text_input("Telefone")
-fixo = st.text_input("Fone fixo")
-nacionalidade = st.text_input("Nacionalidade")
-profissao = st.text_input("Profissão")
-fone_pref = st.text_input("Fone preferência")
-estado_civil = st.text_input("Estado civil")
-renda = st.text_input("Renda")
-email = st.text_input("Email")
+# PARCELAS INTELIGENTES
+st.subheader("💰 Condições")
 
-st.subheader("👫 Cônjuge / 2º Proponente")
+valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
 
-conjuge = st.text_input("Nome 2")
-cpf2 = st.text_input("CPF 2")
-tel2 = st.text_input("Telefone 2")
-fixo2 = st.text_input("Fixo 2")
-nac2 = st.text_input("Nacionalidade 2")
-prof2 = st.text_input("Profissão 2")
-fone2 = st.text_input("Fone preferência 2")
-civil2 = st.text_input("Estado civil 2")
-renda2 = st.text_input("Renda 2")
+personalizar = st.checkbox("⚙️ Personalizar", key="pers")
 
-st.subheader("💰 Entrada")
-
-valor_cliente = st.number_input("Valor entrada cliente", min_value=0.0)
-parcelas = st.slider("Parcelar entrada", 1, 4, 1)
+ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0
+ato = ato_manual if ato_manual > 0 else ato_min
 
 restante = entrada_total - valor_cliente
 if restante < 0: restante = 0
 
-valor_parcela = restante / parcelas if parcelas > 0 else 0
+parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
 
-# ---------------- PAINEL ----------------
+parcelas_iguais = parcelas
+valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
+usar_diferente = False
+parcela_diferente = 0
+data_parcela_diferente = ""
+
+if personalizar and parcelas > 1:
+    parcela_editada = st.number_input("Parcela diferente", min_value=0.0, key="diff")
+
+    restante_auto = restante - parcela_editada
+    if restante_auto < 0: restante_auto = 0
+
+    valor_parcela_igual = restante_auto / (parcelas - 1)
+
+    if abs(parcela_editada - valor_parcela_igual) > 0.01:
+        usar_diferente = True
+        parcela_diferente = parcela_editada
+        parcelas_iguais = parcelas - 1
+        data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
+
+# PAINEL BONITO
 st.divider()
-st.subheader("📊 Painel de Conferência")
+st.subheader("📊 Conferência")
 
-st.write(f"Valor Negócio: R$ {valor_negocio:.2f}")
-st.write(f"Entrada Total: R$ {entrada_total:.2f}")
-st.write(f"Ato: R$ {ato:.2f}")
-st.write(f"Parcelas: {parcelas}x de R$ {valor_parcela:.2f}")
+c1, c2, c3 = st.columns(3)
 
-# ---------------- GERAR ----------------
+c1.metric("Unidade", unidade)
+c1.metric("Área", f"{area:.2f}")
+
+c2.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
+c2.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
+
+c3.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
+c3.metric("Intermediação", f"R$ {intermed:,.2f}")
+
+st.info(f"Entrada Total: R$ {entrada_total:,.2f}")
+
+if parcelas > 1:
+    if usar_diferente:
+        st.warning(f"{parcelas_iguais}x de R$ {valor_parcela_igual:,.2f} + 1x de R$ {parcela_diferente:,.2f}")
+    else:
+        st.success(f"{parcelas}x de R$ {valor_parcela_igual:,.2f}")
+
+# GERAR
 if st.button("GERAR PDF"):
     dados = {
         "nome": nome,
@@ -264,12 +313,15 @@ if st.button("GERAR PDF"):
         "parcela_36": parcela_36,
         "saldo": saldo,
         "ato": ato,
-        "parcelas": parcelas,
-        "valor_parcela": valor_parcela
+        "parcelas_iguais": parcelas_iguais,
+        "valor_parcela_igual": valor_parcela_igual,
+        "usar_diferente": usar_diferente,
+        "parcela_diferente": parcela_diferente,
+        "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else ""
     }
 
     excel = preencher_proposta(dados)
     pdf = excel_para_pdf(excel)
 
     with open(pdf, "rb") as f:
-        st.download_button("📥 Baixar PDF", f, file_name="proposta.pdf")
+        st.download_button("📥 Baixar PDF", f, file_name=f"Proposta_{unidade}.pdf")

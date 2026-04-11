@@ -7,7 +7,7 @@ import os
 import json
 from datetime import datetime
 
-st.set_page_config(layout="wide")
+st.set_page_config(page_title="Sistema de Propostas", layout="centered")
 
 # ---------------- USUÁRIOS ----------------
 USUARIOS_FILE = "usuarios.json"
@@ -15,12 +15,18 @@ USUARIOS_FILE = "usuarios.json"
 def carregar_usuarios():
     if not os.path.exists(USUARIOS_FILE):
         return {}
-    with open(USUARIOS_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(USUARIOS_FILE, "r", encoding="utf-8") as f:
+            conteudo = f.read().strip()
+            if not conteudo:
+                return {}
+            return json.loads(conteudo)
+    except:
+        return {}
 
 def salvar_usuarios(users):
-    with open(USUARIOS_FILE, "w") as f:
-        json.dump(users, f, indent=4)
+    with open(USUARIOS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=4, ensure_ascii=False)
 
 # ---------------- LOGIN ----------------
 def tela_login():
@@ -33,7 +39,7 @@ def tela_login():
         user = st.text_input("Usuário", key="login_user")
         senha = st.text_input("Senha", type="password", key="login_senha")
 
-        if st.button("Entrar", key="btn_login"):
+        if st.button("Entrar", key="btn_login", use_container_width=True):
             if user in usuarios and usuarios[user]["senha"] == senha:
                 st.session_state["logado"] = True
                 st.session_state["usuario"] = user
@@ -47,18 +53,20 @@ def tela_login():
         senha_nova = st.text_input("Senha", type="password", key="cad_senha")
         confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
 
-        if st.button("Criar conta", key="btn_cadastro"):
+        if st.button("Criar conta", key="btn_cadastro", use_container_width=True):
             if novo in usuarios:
                 st.warning("Usuário já existe")
             elif senha_nova != confirmar:
                 st.warning("Senhas não conferem")
+            elif not novo.strip() or not senha_nova.strip():
+                st.warning("Preencha todos os campos")
             else:
                 usuarios[novo] = {"senha": senha_nova, "tipo": "corretor"}
                 salvar_usuarios(usuarios)
                 st.success("Conta criada! Faça login.")
 
 def logout():
-    if st.sidebar.button("🚪 Sair", key="logout"):
+    if st.sidebar.button("🚪 Sair", key="logout", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
@@ -94,7 +102,7 @@ def limpar(valor):
         return 0.0
     if isinstance(valor, (int, float)):
         return float(valor)
-    texto = str(valor).replace('R$', '').replace('.', '').replace(',', '.')
+    texto = str(valor).replace("R$", "").replace(".", "").replace(",", ".")
     try:
         return float(texto)
     except:
@@ -169,7 +177,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["G26"] = "Única"
     ws["K26"] = d["data_saldo"]
 
-    # P24, P25, P26
     ws["P24"] = "Fixo"
     ws["P25"] = "Reajustável"
     ws["P26"] = "Reajustável"
@@ -205,7 +212,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     return arquivo
 
 # ---------------- APP ----------------
-
 st.subheader("🏢 Empreendimento")
 emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
 emp = empreendimentos[emp_nome]
@@ -227,7 +233,7 @@ valor_imovel = buscar(linha, ["valor imóvel"])
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
-# CLIENTE E CONJUGE
+# CLIENTE
 st.subheader("👤 Cliente")
 nome = st.text_input("Nome", key="nome")
 cpf = st.text_input("CPF", key="cpf")
@@ -240,6 +246,7 @@ estado_civil = st.text_input("Estado civil", key="civil")
 renda = st.text_input("Renda", key="renda")
 email = st.text_input("Email", key="email")
 
+# CÔNJUGE
 st.subheader("👫 Cônjuge")
 conjuge = st.text_input("Nome", key="conj")
 cpf2 = st.text_input("CPF", key="cpf2")
@@ -253,25 +260,17 @@ renda2 = st.text_input("Renda", key="renda2")
 
 # DATAS DE VENCIMENTO
 st.subheader("📅 Datas de Vencimento")
-col_d1, col_d2, col_d3 = st.columns(3)
-with col_d1:
-    data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
-with col_d2:
-    data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
-with col_d3:
-    data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
+data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
+data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
+data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
 
 # DATAS DA ENTRADA
 st.subheader("📅 Datas da Entrada")
-col_e1, col_e2, col_e3 = st.columns(3)
-with col_e1:
-    data_ato = st.date_input("Data do ato", key="data_ato")
-with col_e2:
-    data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
-with col_e3:
-    data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
+data_ato = st.date_input("Data do ato", key="data_ato")
+data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
+data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
 
-# PARCELAS INTELIGENTES
+# CONDIÇÕES
 st.subheader("💰 Condições")
 valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
 personalizar = st.checkbox("⚙️ Personalizar", key="pers")
@@ -307,35 +306,25 @@ if personalizar and parcelas > 1:
         parcelas_iguais = parcelas - 1
         data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
 
-# PAINEL DETALHES DO LOTE
+# DETALHES DO LOTE
 st.divider()
 st.subheader("🏡 Detalhes do Lote")
-
-l1, l2, l3 = st.columns(3)
-
-l1.metric("Unidade", unidade)
-l1.metric("Área (m²)", f"{area:.2f}")
-
-l2.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
-l2.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
-
-l3.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
-l3.metric("Intermediação", f"R$ {intermed:,.2f}")
+st.metric("Unidade", unidade)
+st.metric("Área (m²)", f"{area:.2f}")
+st.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
+st.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
+st.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
+st.metric("Intermediação", f"R$ {intermed:,.2f}")
 
 # PAINEL DE CÁLCULO
 st.divider()
 st.subheader("📊 Painel de Cálculo")
-
-c1, c2, c3 = st.columns(3)
-
-c1.metric("💰 Valor do Negócio", f"R$ {valor_negocio:,.2f}")
-c1.metric("📥 Entrada Total", f"R$ {entrada_total:,.2f}")
-
-c2.metric("💵 Entrada Cliente", f"R$ {valor_cliente:,.2f}")
-c2.metric("📌 Ato", f"R$ {ato:,.2f}")
-
-c3.metric("📉 Restante Entrada", f"R$ {restante:,.2f}")
-c3.metric("📆 Parcelas", parcelas)
+st.metric("Valor do Negócio", f"R$ {valor_negocio:,.2f}")
+st.metric("Entrada Total", f"R$ {entrada_total:,.2f}")
+st.metric("Entrada Cliente", f"R$ {valor_cliente:,.2f}")
+st.metric("Ato", f"R$ {ato:,.2f}")
+st.metric("Restante Entrada", f"R$ {restante:,.2f}")
+st.metric("Parcelas", parcelas)
 
 st.markdown("### 📅 Parcelamento")
 
@@ -357,7 +346,7 @@ if restante == 0:
     st.success("✅ Entrada quitada")
 
 # GERAR
-if st.button("GERAR PDF"):
+if st.button("GERAR PDF", use_container_width=True):
     dados = {
         "nome": nome,
         "cpf": cpf,
@@ -408,20 +397,20 @@ if st.button("GERAR PDF"):
 
     st.success("✅ Proposta gerada com sucesso!")
 
-    col_download_1, col_download_2 = st.columns(2)
-
     with open(pdf, "rb") as f_pdf:
-        col_download_1.download_button(
+        st.download_button(
             "📥 Baixar PDF",
             f_pdf,
             file_name=f"Proposta_{unidade}.pdf",
-            mime="application/pdf"
+            mime="application/pdf",
+            use_container_width=True
         )
 
     with open(excel, "rb") as f_excel:
-        col_download_2.download_button(
+        st.download_button(
             "📥 Baixar Excel",
             f_excel,
             file_name=f"Proposta_{unidade}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
         )

@@ -153,7 +153,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    # --- NOVAS FUNÇÕES MAPEADAS (B24 até K26) ---
+    # BLOCO 24–26
     ws["B24"] = 1
     ws["C24"] = d["entrada_imovel"]
     ws["G24"] = "Única"
@@ -169,7 +169,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["G26"] = "Única"
     ws["K26"] = d["data_saldo"]
 
-    # ADIÇÃO SOLICITADA
+    # P24, P25, P26
     ws["P24"] = "Fixo"
     ws["P25"] = "Reajustável"
     ws["P26"] = "Reajustável"
@@ -187,7 +187,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["P34"] = "Fixo"
     ws["K34"] = d["data_parc_entrada"]
 
-    # Centralizar datas da entrada
     ws["K33"].alignment = Alignment(horizontal="center", vertical="center")
     ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
 
@@ -198,7 +197,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
         ws["P35"] = "Fixa"
         ws["K35"] = d["data_parcela_diferente_manual"]
 
-        # Centralização solicitada
         for cel in ["B35", "G35", "K35", "P35"]:
             ws[cel].alignment = Alignment(horizontal="center", vertical="center")
 
@@ -253,7 +251,7 @@ fone2 = st.text_input("Fone preferência", key="fone2")
 civil2 = st.text_input("Estado civil", key="civil2")
 renda2 = st.text_input("Renda", key="renda2")
 
-# --- NOVOS CAMPOS DE DATA SOLICITADOS ---
+# DATAS DE VENCIMENTO
 st.subheader("📅 Datas de Vencimento")
 col_d1, col_d2, col_d3 = st.columns(3)
 with col_d1:
@@ -263,7 +261,7 @@ with col_d2:
 with col_d3:
     data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
 
-# Novas datas da entrada
+# DATAS DA ENTRADA
 st.subheader("📅 Datas da Entrada")
 col_e1, col_e2, col_e3 = st.columns(3)
 with col_e1:
@@ -281,8 +279,6 @@ personalizar = st.checkbox("⚙️ Personalizar", key="pers")
 ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0
 ato = ato_manual if ato_manual > 0 else ato_min
 
-# LÓGICA CORRIGIDA:
-# o cliente paga primeiro o ato; o restante abate na entrada parcelada
 valor_para_entrada = valor_cliente - ato
 if valor_para_entrada < 0:
     valor_para_entrada = 0
@@ -311,7 +307,7 @@ if personalizar and parcelas > 1:
         parcelas_iguais = parcelas - 1
         data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
 
-# ---------------- PAINEL DETALHES DO LOTE ----------------
+# PAINEL DETALHES DO LOTE
 st.divider()
 st.subheader("🏡 Detalhes do Lote")
 
@@ -326,7 +322,7 @@ l2.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
 l3.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
 l3.metric("Intermediação", f"R$ {intermed:,.2f}")
 
-# ---------------- PAINEL DE CÁLCULO ----------------
+# PAINEL DE CÁLCULO
 st.divider()
 st.subheader("📊 Painel de Cálculo")
 
@@ -410,10 +406,22 @@ if st.button("GERAR PDF"):
     excel = preencher_proposta(dados)
     pdf = excel_para_pdf(excel)
 
-    with open(pdf, "rb") as f:
-        st.download_button(
+    st.success("✅ Proposta gerada com sucesso!")
+
+    col_download_1, col_download_2 = st.columns(2)
+
+    with open(pdf, "rb") as f_pdf:
+        col_download_1.download_button(
             "📥 Baixar PDF",
-            f,
+            f_pdf,
             file_name=f"Proposta_{unidade}.pdf",
             mime="application/pdf"
+        )
+
+    with open(excel, "rb") as f_excel:
+        col_download_2.download_button(
+            "📥 Baixar Excel",
+            f_excel,
+            file_name=f"Proposta_{unidade}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )

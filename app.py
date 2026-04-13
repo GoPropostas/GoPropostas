@@ -248,6 +248,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb = load_workbook(modelo)
     ws = wb.active
 
+    # CLIENTE
     ws["E5"] = d["nome"]
     ws["D6"] = d["cpf"]
     ws["J6"] = d["telefone"]
@@ -259,6 +260,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["O8"] = d["renda"]
     ws["E9"] = d["email"]
 
+    # CÔNJUGE
     ws["G11"] = d["conjuge"]
     ws["D13"] = d["cpf2"]
     ws["J13"] = d["tel2"]
@@ -269,6 +271,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["D15"] = d["civil2"]
     ws["O15"] = d["renda2"]
 
+    # LOTE
     ws["G18"] = d["proprietario"]
     ws["G19"] = d["empreendimento"]
     ws["C20"] = d["logradouro"]
@@ -279,6 +282,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
+    # BLOCO 24–26
     ws["B24"] = 1
     ws["C24"] = d["entrada_imovel"]
     ws["G24"] = "Única"
@@ -298,8 +302,9 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["P25"] = "Reajustável"
     ws["P26"] = "Reajustável"
 
+    # ENTRADA
     ws["B33"] = 1
-    ws["C33"] = d["ato"]
+    ws["C33"] = d["entrada_cliente"]
     ws["G33"] = "Única"
     ws["P33"] = "À vista"
     ws["K33"] = d["data_ato"]
@@ -349,6 +354,7 @@ valor_imovel = buscar(linha, ["valor imóvel"])
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
+# CLIENTE
 st.subheader("👤 Cliente")
 nome = st.text_input("Nome", key="nome")
 cpf = st.text_input("CPF", key="cpf")
@@ -361,6 +367,7 @@ estado_civil = st.text_input("Estado civil", key="civil")
 renda = st.text_input("Renda", key="renda")
 email = st.text_input("Email", key="email")
 
+# CÔNJUGE
 st.subheader("👫 Cônjuge")
 conjuge = st.text_input("Nome", key="conj")
 cpf2 = st.text_input("CPF", key="cpf2")
@@ -372,16 +379,19 @@ fone2 = st.text_input("Fone preferência", key="fone2")
 civil2 = st.text_input("Estado civil", key="civil2")
 renda2 = st.text_input("Renda", key="renda2")
 
+# DATAS DE VENCIMENTO
 st.subheader("📅 Datas de Vencimento")
 data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
 data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
 data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
 
+# DATAS DA ENTRADA
 st.subheader("📅 Datas da Entrada")
 data_ato = st.date_input("Data do ato", key="data_ato")
 data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
 data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
 
+# CONDIÇÕES
 st.subheader("💰 Condições")
 valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
 personalizar = st.checkbox("⚙️ Personalizar", key="pers")
@@ -389,13 +399,27 @@ personalizar = st.checkbox("⚙️ Personalizar", key="pers")
 ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0
 ato = ato_manual if ato_manual > 0 else ato_min
 
-valor_para_entrada = valor_cliente - ato
-if valor_para_entrada < 0:
-    valor_para_entrada = 0
-
-restante = entrada_total - valor_para_entrada
+# Entrada cliente vai para C33 e também abate das parcelas
+restante = entrada_total - valor_cliente
 if restante < 0:
     restante = 0
+
+valor_minimo_entrada = ato_min
+erros_validacao = []
+avisos_validacao = []
+
+if valor_cliente <= 0:
+    avisos_validacao.append("Nenhum valor foi informado em Entrada cliente.")
+
+if valor_cliente < valor_minimo_entrada:
+    erros_validacao.append(
+        f"Entrada cliente menor que o mínimo. Mínimo recomendado: R$ {valor_minimo_entrada:,.2f}"
+    )
+
+if valor_cliente > entrada_total:
+    avisos_validacao.append(
+        "Entrada cliente maior que a entrada total. O excedente não será parcelado."
+    )
 
 parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
 parcelas_iguais = parcelas
@@ -407,8 +431,11 @@ data_parcela_diferente = ""
 if personalizar and parcelas > 1:
     parcela_editada = st.number_input("Parcela diferente", min_value=0.0, key="diff")
     restante_auto = restante - parcela_editada
+
     if restante_auto < 0:
         restante_auto = 0
+        avisos_validacao.append("A parcela diferente está maior que o restante disponível.")
+
     valor_parcela_igual = restante_auto / (parcelas - 1)
 
     if abs(parcela_editada - valor_parcela_igual) > 0.01:
@@ -417,43 +444,66 @@ if personalizar and parcelas > 1:
         parcelas_iguais = parcelas - 1
         data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
 
+        if parcela_diferente > restante:
+            erros_validacao.append("A parcela diferente não pode ser maior que o restante da entrada.")
+
+if usar_diferente and not data_parc_diferente:
+    erros_validacao.append("Informe a data da parcela diferente.")
+
+# DETALHES DO LOTE
 st.divider()
 st.subheader("🏡 Detalhes do Lote")
-st.metric("Unidade", unidade)
-st.metric("Área (m²)", f"{area:.2f}")
-st.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
-st.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
-st.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
-st.metric("Intermediação", f"R$ {intermed:,.2f}")
 
+col_l1, col_l2 = st.columns(2)
+with col_l1:
+    st.metric("Unidade", unidade)
+    st.metric("Área (m²)", f"{area:.2f}")
+    st.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
+
+with col_l2:
+    st.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
+    st.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
+    st.metric("Intermediação", f"R$ {intermed:,.2f}")
+
+# PAINEL DE CÁLCULO
 st.divider()
 st.subheader("📊 Painel de Cálculo")
-st.metric("Valor do Negócio", f"R$ {valor_negocio:,.2f}")
-st.metric("Entrada Total", f"R$ {entrada_total:,.2f}")
-st.metric("Entrada Cliente", f"R$ {valor_cliente:,.2f}")
-st.metric("Ato", f"R$ {ato:,.2f}")
-st.metric("Restante Entrada", f"R$ {restante:,.2f}")
-st.metric("Parcelas", parcelas)
 
-st.markdown("### 📅 Parcelamento")
+col_c1, col_c2 = st.columns(2)
+with col_c1:
+    st.metric("Entrada Total", f"R$ {entrada_total:,.2f}")
+    st.metric("Entrada Cliente (C33)", f"R$ {valor_cliente:,.2f}")
+    st.metric("Valor mínimo", f"R$ {valor_minimo_entrada:,.2f}")
+
+with col_c2:
+    st.metric("Ato informado", f"R$ {ato:,.2f}")
+    st.metric("Restante para parcelar", f"R$ {restante:,.2f}")
+    st.metric("Quantidade de parcelas", f"{parcelas}")
+
+st.markdown("### 📅 Parcelamento da entrada")
 if parcelas > 1:
     if usar_diferente:
-        st.warning(
+        st.info(
             f"{parcelas_iguais}x de R$ {valor_parcela_igual:,.2f} + "
             f"1x de R$ {parcela_diferente:,.2f}"
         )
     else:
         st.success(f"{parcelas}x de R$ {valor_parcela_igual:,.2f}")
 else:
-    st.success("Pagamento à vista")
+    st.success("Pagamento em parcela única")
 
-if valor_cliente < ato:
-    st.error("⚠️ Entrada não cobre o ATO")
+if avisos_validacao:
+    for aviso in avisos_validacao:
+        st.warning(f"⚠️ {aviso}")
 
-if restante == 0:
-    st.success("✅ Entrada quitada")
+if erros_validacao:
+    for erro in erros_validacao:
+        st.error(f"❌ {erro}")
 
-if st.button("GERAR PDF", use_container_width=True):
+proposta_pode_ser_gerada = len(erros_validacao) == 0
+
+# GERAR
+if st.button("GERAR PDF", use_container_width=True, disabled=not proposta_pode_ser_gerada):
     dados = {
         "nome": nome,
         "cpf": cpf,
@@ -485,6 +535,7 @@ if st.button("GERAR PDF", use_container_width=True):
         "entrada_imovel": entrada_imovel,
         "parcela_36": parcela_36,
         "saldo": saldo,
+        "entrada_cliente": valor_cliente,
         "ato": ato,
         "parcelas_iguais": parcelas_iguais,
         "valor_parcela_igual": valor_parcela_igual,

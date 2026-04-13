@@ -11,8 +11,8 @@ from supabase import Client, create_client
 
 st.set_page_config(page_title="Sistema de Propostas", layout="centered")
 
-EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://SEU-PROJETO.supabase.co/functions/v1/create-subscription"
-EDGE_FUNCTION_CREATE_PIX_URL = "https://SEU-PROJETO.supabase.co/functions/v1/create-pix"
+EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-subscription"
+EDGE_FUNCTION_CREATE_PIX_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-pix"
 
 # ---------------- SUPABASE LOGIN ----------------
 @st.cache_resource

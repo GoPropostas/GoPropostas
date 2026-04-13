@@ -10,6 +10,9 @@ from supabase import Client, create_client
 
 st.set_page_config(page_title="Sistema de Propostas", layout="centered")
 
+APP_URL = "https://gopropostas-lzquxbgaxn9gmku2hxnwnx.streamlit.app/"
+MERCADO_PAGO_LINK = "https://mpago.la/1ifT9Sj"
+
 # ---------------- SUPABASE LOGIN ----------------
 @st.cache_resource
 def get_supabase() -> Client:
@@ -67,6 +70,7 @@ def init_auth_state():
         "tipo": "",
         "sb_access_token": "",
         "sb_refresh_token": "",
+        "assinatura_ativa": False,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -109,6 +113,64 @@ def tentar_restaurar_sessao():
     except Exception:
         pass
 
+def tela_assinatura():
+    qp = st.query_params
+    status_pagamento = qp.get("mp_status", "")
+
+    if status_pagamento == "approved":
+        st.session_state["assinatura_ativa"] = True
+        st.success("Pagamento aprovado! Agora você já pode criar sua conta ou fazer login.")
+    elif status_pagamento == "pending":
+        st.warning("Seu pagamento está pendente. Assim que for confirmado, o acesso será liberado.")
+    elif status_pagamento == "failure":
+        st.error("O pagamento não foi concluído. Tente novamente.")
+
+    if st.session_state["assinatura_ativa"]:
+        return
+
+    st.markdown(
+        """
+        <div style="
+            padding: 28px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #0f172a, #1e3a8a);
+            color: white;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            margin-top: 20px;
+            margin-bottom: 20px;
+        ">
+            <h1 style="margin-bottom: 8px;">GoPropostas</h1>
+            <h3 style="margin-top: 0; font-weight: 500;">Assinatura mensal</h3>
+            <p style="font-size: 18px; margin-top: 16px; margin-bottom: 10px;">
+                Tenha acesso completo ao sistema por
+            </p>
+            <div style="font-size: 42px; font-weight: bold; margin: 12px 0;">
+                R$ 15,00<span style="font-size:18px; font-weight:400;">/mês</span>
+            </div>
+            <p style="font-size: 15px; opacity: 0.95;">
+                Após o pagamento, você será redirecionado para criar sua conta e acessar o sistema.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.link_button(
+        "💳 Assinar com Mercado Pago",
+        MERCADO_PAGO_LINK,
+        use_container_width=True,
+    )
+
+    st.info(
+        "Redirecionamento após o pagamento:\n"
+        f"Sucesso: {APP_URL}?mp_status=approved\n\n"
+        f"Pendente: {APP_URL}?mp_status=pending\n\n"
+        f"Falha: {APP_URL}?mp_status=failure"
+    )
+
+    st.stop()
+
 def tela_login():
     st.title("🔐 Sistema de Propostas")
 
@@ -142,26 +204,26 @@ def tela_login():
                 st.error(f"Erro no login: {e}")
 
     with abas[1]:
-        nome = st.text_input("Nome completo", key="cad_nome")
-        email = st.text_input("Email", key="cad_email")
-        senha = st.text_input("Senha", type="password", key="cad_senha")
+        nome_cadastro = st.text_input("Nome completo", key="cad_nome")
+        email_cadastro = st.text_input("Email", key="cad_email")
+        senha_cadastro = st.text_input("Senha", type="password", key="cad_senha")
         confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
 
         if st.button("Criar conta", key="btn_cadastro", use_container_width=True):
-            if senha != confirmar:
+            if senha_cadastro != confirmar:
                 st.warning("Senhas não conferem.")
                 return
-            if not nome.strip() or not email.strip() or not senha.strip():
+            if not nome_cadastro.strip() or not email_cadastro.strip() or not senha_cadastro.strip():
                 st.warning("Preencha todos os campos.")
                 return
 
             try:
-                existente = buscar_profile_por_email(email)
+                existente = buscar_profile_por_email(email_cadastro)
                 if existente:
                     st.warning("Já existe uma conta com esse email.")
                     return
 
-                resp = cadastrar_com_supabase(nome, email, senha)
+                resp = cadastrar_com_supabase(nome_cadastro, email_cadastro, senha_cadastro)
                 user = resp.user
 
                 if user:
@@ -191,6 +253,7 @@ def logout():
 # ---------------- CONTROLE LOGIN ----------------
 init_auth_state()
 tentar_restaurar_sessao()
+tela_assinatura()
 
 if not st.session_state["logado"]:
     tela_login()
@@ -251,8 +314,11 @@ def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
 def adicionar_meses(data_base: date, meses: int) -> date:
     ano = data_base.year + (data_base.month - 1 + meses) // 12
     mes = (data_base.month - 1 + meses) % 12 + 1
-    ultimo_dia = [31, 29 if (ano % 4 == 0 and (ano % 100 != 0 or ano % 400 == 0)) else 28,
-                  31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1]
+    ultimo_dia = [
+        31,
+        29 if (ano % 4 == 0 and (ano % 100 != 0 or ano % 400 == 0)) else 28,
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    ][mes - 1]
     dia = min(data_base.day, ultimo_dia)
     return date(ano, mes, dia)
 
@@ -261,7 +327,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb = load_workbook(modelo)
     ws = wb.active
 
-    # CLIENTE
     ws["E5"] = d["nome"]
     ws["D6"] = d["cpf"]
     ws["J6"] = d["telefone"]
@@ -273,7 +338,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["O8"] = d["renda"]
     ws["E9"] = d["email"]
 
-    # CÔNJUGE
     ws["G11"] = d["conjuge"]
     ws["D13"] = d["cpf2"]
     ws["J13"] = d["tel2"]
@@ -284,7 +348,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["D15"] = d["civil2"]
     ws["O15"] = d["renda2"]
 
-    # LOTE
     ws["G18"] = d["proprietario"]
     ws["G19"] = d["empreendimento"]
     ws["C20"] = d["logradouro"]
@@ -295,7 +358,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
-    # BLOCO 24–26
     ws["B24"] = 1
     ws["C24"] = d["entrada_imovel"]
     ws["G24"] = "Única"
@@ -315,13 +377,11 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["P25"] = "Reajustável"
     ws["P26"] = "Reajustável"
 
-    # ENTRADA
     ws["B33"] = 1
     ws["C33"] = d["entrada_cliente"]
     ws["G33"] = "Única"
     ws["P33"] = "À vista"
     ws["K33"] = d["data_ato"]
-
     ws["K33"].alignment = Alignment(horizontal="center", vertical="center")
 
     if d["entrada_quitada"]:
@@ -342,7 +402,6 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
         ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
         ws["P34"] = "Fixo"
         ws["K34"] = d["data_parc_entrada"]
-
         ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
 
         if d["usar_diferente"]:
@@ -387,7 +446,6 @@ valor_imovel = buscar(linha, ["valor imóvel"])
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
-# CLIENTE
 st.subheader("👤 Cliente")
 nome = st.text_input("Nome", key="nome")
 cpf = st.text_input("CPF", key="cpf")
@@ -399,9 +457,14 @@ fone_pref = st.text_input("Fone preferência", key="fonepref")
 estado_civil = st.text_input("Estado civil", key="civil")
 renda = st.text_input("Renda", key="renda")
 email = st.text_input("Email", key="email")
-data_nascimento = st.date_input("Data de nascimento do cliente", key="data_nascimento")
+data_nascimento = st.date_input(
+    "Data de nascimento do cliente",
+    value=date(1980, 1, 1),
+    min_value=date(1900, 1, 1),
+    max_value=date.today(),
+    key="data_nascimento"
+)
 
-# CÔNJUGE
 st.subheader("👫 Cônjuge")
 conjuge = st.text_input("Nome", key="conj")
 cpf2 = st.text_input("CPF", key="cpf2")
@@ -413,19 +476,16 @@ fone2 = st.text_input("Fone preferência", key="fone2")
 civil2 = st.text_input("Estado civil", key="civil2")
 renda2 = st.text_input("Renda", key="renda2")
 
-# DATAS DE VENCIMENTO
 st.subheader("📅 Datas de Vencimento")
 data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
 data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
 data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
 
-# DATAS DA ENTRADA
 st.subheader("📅 Datas da Entrada")
 data_ato = st.date_input("Data do ato", key="data_ato")
 data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
 data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
 
-# CONDIÇÕES
 st.subheader("💰 Condições")
 valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
 personalizar = st.checkbox("⚙️ Personalizar", key="pers")
@@ -433,7 +493,6 @@ personalizar = st.checkbox("⚙️ Personalizar", key="pers")
 ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0
 ato = ato_manual if ato_manual > 0 else ato_min
 
-# Entrada cliente vai para C33 e também abate das parcelas
 restante = entrada_total - valor_cliente
 if restante < 0:
     restante = 0
@@ -453,15 +512,12 @@ if valor_cliente < valor_minimo_entrada:
     )
 
 if valor_cliente > entrada_total:
-    avisos_validacao.append(
-        "Entrada cliente maior que a entrada total. O excedente não será parcelado."
-    )
+    avisos_validacao.append("Entrada cliente maior que a entrada total. O excedente não será parcelado.")
 
 parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
 
 usar_diferente = False
 parcela_diferente = 0
-data_parcela_diferente = ""
 parcelas_iguais = 0
 valor_parcela_igual = 0
 
@@ -482,13 +538,13 @@ if personalizar and parcelas > 1 and not entrada_quitada:
     if abs(parcela_editada - valor_parcela_igual) > 0.01:
         usar_diferente = True
         parcela_diferente = parcela_editada
-        parcelas_iguais = parcelas - 1
-        data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
+
+        if parcelas > 1:
+            parcelas_iguais = parcelas - 1
 
         if parcela_diferente > restante:
             erros_validacao.append("A parcela diferente não pode ser maior que o restante da entrada.")
 
-# DETALHES DO LOTE
 st.divider()
 st.subheader("🏡 Detalhes do Lote")
 
@@ -503,7 +559,6 @@ with col_l2:
     st.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
     st.metric("Intermediação", f"R$ {intermed:,.2f}")
 
-# PAINEL DE CÁLCULO
 st.divider()
 st.subheader("📊 Painel de Cálculo")
 
@@ -542,7 +597,6 @@ if erros_validacao:
 
 proposta_pode_ser_gerada = len(erros_validacao) == 0
 
-# GERAR
 if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_pode_ser_gerada):
     data_final_36_parcelas = adicionar_meses(data_parcelas, 36)
     idade_apos_36 = calcular_idade_em_data(data_nascimento, data_final_36_parcelas)
@@ -588,13 +642,12 @@ if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_p
         "valor_parcela_igual": valor_parcela_igual,
         "usar_diferente": usar_diferente,
         "parcela_diferente": parcela_diferente,
-        "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else "",
         "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
         "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
         "data_saldo": data_saldo.strftime("%d/%m/%Y"),
         "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
         "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
-        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else "",
+        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if usar_diferente and data_parc_diferente else "",
     }
 
     excel = preencher_proposta(dados)

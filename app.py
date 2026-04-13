@@ -1,6 +1,6 @@
 import os
 import subprocess
-from datetime import datetime
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -243,6 +243,19 @@ def excel_para_pdf(arquivo):
     )
     return arquivo.replace(".xlsx", ".pdf")
 
+def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
+    return data_referencia.year - nascimento.year - (
+        (data_referencia.month, data_referencia.day) < (nascimento.month, nascimento.day)
+    )
+
+def adicionar_meses(data_base: date, meses: int) -> date:
+    ano = data_base.year + (data_base.month - 1 + meses) // 12
+    mes = (data_base.month - 1 + meses) % 12 + 1
+    ultimo_dia = [31, 29 if (ano % 4 == 0 and (ano % 100 != 0 or ano % 400 == 0)) else 28,
+                  31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1]
+    dia = min(data_base.day, ultimo_dia)
+    return date(ano, mes, dia)
+
 # ---------------- EXCEL ----------------
 def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb = load_workbook(modelo)
@@ -309,24 +322,44 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["P33"] = "À vista"
     ws["K33"] = d["data_ato"]
 
-    ws["B34"] = d["parcelas_iguais"]
-    ws["C34"] = d["valor_parcela_igual"]
-    ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
-    ws["P34"] = "Fixo"
-    ws["K34"] = d["data_parc_entrada"]
-
     ws["K33"].alignment = Alignment(horizontal="center", vertical="center")
-    ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
 
-    if d["usar_diferente"]:
-        ws["B35"] = 1
-        ws["C35"] = d["parcela_diferente"]
-        ws["G35"] = "Única"
-        ws["P35"] = "Fixa"
-        ws["K35"] = d["data_parcela_diferente_manual"]
+    if d["entrada_quitada"]:
+        ws["B34"] = ""
+        ws["C34"] = ""
+        ws["G34"] = ""
+        ws["P34"] = ""
+        ws["K34"] = ""
 
-        for cel in ["B35", "G35", "K35", "P35"]:
-            ws[cel].alignment = Alignment(horizontal="center", vertical="center")
+        ws["B35"] = ""
+        ws["C35"] = ""
+        ws["G35"] = ""
+        ws["P35"] = ""
+        ws["K35"] = ""
+    else:
+        ws["B34"] = d["parcelas_iguais"]
+        ws["C34"] = d["valor_parcela_igual"]
+        ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
+        ws["P34"] = "Fixo"
+        ws["K34"] = d["data_parc_entrada"]
+
+        ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
+
+        if d["usar_diferente"]:
+            ws["B35"] = 1
+            ws["C35"] = d["parcela_diferente"]
+            ws["G35"] = "Única"
+            ws["P35"] = "Fixa"
+            ws["K35"] = d["data_parcela_diferente_manual"]
+
+            for cel in ["B35", "G35", "K35", "P35"]:
+                ws[cel].alignment = Alignment(horizontal="center", vertical="center")
+        else:
+            ws["B35"] = ""
+            ws["C35"] = ""
+            ws["G35"] = ""
+            ws["P35"] = ""
+            ws["K35"] = ""
 
     arquivo = "proposta.xlsx"
     wb.save(arquivo)
@@ -366,6 +399,7 @@ fone_pref = st.text_input("Fone preferência", key="fonepref")
 estado_civil = st.text_input("Estado civil", key="civil")
 renda = st.text_input("Renda", key="renda")
 email = st.text_input("Email", key="email")
+data_nascimento = st.date_input("Data de nascimento do cliente", key="data_nascimento")
 
 # CÔNJUGE
 st.subheader("👫 Cônjuge")
@@ -404,6 +438,8 @@ restante = entrada_total - valor_cliente
 if restante < 0:
     restante = 0
 
+entrada_quitada = restante <= 0.01
+
 valor_minimo_entrada = ato_min
 erros_validacao = []
 avisos_validacao = []
@@ -422,13 +458,18 @@ if valor_cliente > entrada_total:
     )
 
 parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
-parcelas_iguais = parcelas
-valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
+
 usar_diferente = False
 parcela_diferente = 0
 data_parcela_diferente = ""
+parcelas_iguais = 0
+valor_parcela_igual = 0
 
-if personalizar and parcelas > 1:
+if not entrada_quitada:
+    parcelas_iguais = parcelas
+    valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
+
+if personalizar and parcelas > 1 and not entrada_quitada:
     parcela_editada = st.number_input("Parcela diferente", min_value=0.0, key="diff")
     restante_auto = restante - parcela_editada
 
@@ -446,9 +487,6 @@ if personalizar and parcelas > 1:
 
         if parcela_diferente > restante:
             erros_validacao.append("A parcela diferente não pode ser maior que o restante da entrada.")
-
-if usar_diferente and not data_parc_diferente:
-    erros_validacao.append("Informe a data da parcela diferente.")
 
 # DETALHES DO LOTE
 st.divider()
@@ -481,7 +519,9 @@ with col_c2:
     st.metric("Quantidade de parcelas", f"{parcelas}")
 
 st.markdown("### 📅 Parcelamento da entrada")
-if parcelas > 1:
+if entrada_quitada:
+    st.success("Entrada paga à vista")
+elif parcelas > 1:
     if usar_diferente:
         st.info(
             f"{parcelas_iguais}x de R$ {valor_parcela_igual:,.2f} + "
@@ -503,7 +543,13 @@ if erros_validacao:
 proposta_pode_ser_gerada = len(erros_validacao) == 0
 
 # GERAR
-if st.button("GERAR PDF", use_container_width=True, disabled=not proposta_pode_ser_gerada):
+if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_pode_ser_gerada):
+    data_final_36_parcelas = adicionar_meses(data_parcelas, 36)
+    idade_apos_36 = calcular_idade_em_data(data_nascimento, data_final_36_parcelas)
+
+    if idade_apos_36 >= 75:
+        st.warning("Cliente não conseguirá refinanciar após as 36 parcelas (idade superior a 75 anos)")
+
     dados = {
         "nome": nome,
         "cpf": cpf,
@@ -536,6 +582,7 @@ if st.button("GERAR PDF", use_container_width=True, disabled=not proposta_pode_s
         "parcela_36": parcela_36,
         "saldo": saldo,
         "entrada_cliente": valor_cliente,
+        "entrada_quitada": entrada_quitada,
         "ato": ato,
         "parcelas_iguais": parcelas_iguais,
         "valor_parcela_igual": valor_parcela_igual,

@@ -20,7 +20,7 @@ st.set_page_config(
 
 EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-subscription"
 EDGE_FUNCTION_CREATE_PIX_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-pix"
-LOGO_PATH = "Apresentação de logo moderno e profissional.png"
+LOGO_PATH = "logo_gopropostas.png"
 
 # ---------------- VISUAL ----------------
 def img_to_base64(path: str) -> str:

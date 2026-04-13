@@ -58,18 +58,23 @@ st.markdown("""
         justify-content: center;
         gap: 18px;
         margin-bottom: 20px;
-        padding: 18px 22px;
+        padding: 16px 22px;
         border-radius: 24px;
         background: rgba(255,255,255,0.06);
         border: 1px solid rgba(255,255,255,0.08);
         backdrop-filter: blur(12px);
         box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+        overflow: visible;
+        min-height: 108px;
     }
 
     .gp-topbar img {
-        height: 74px;
+        max-height: 72px;
+        height: auto;
         width: auto;
-        border-radius: 14px;
+        object-fit: contain;
+        display: block;
+        border-radius: 12px;
     }
 
     .gp-title {
@@ -95,6 +100,11 @@ st.markdown("""
         margin-bottom: 18px;
     }
 
+    .gp-card,
+    .gp-card * {
+        color: #062B36 !important;
+    }
+
     .gp-card-dark {
         background: linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%);
         color: white;
@@ -102,6 +112,11 @@ st.markdown("""
         padding: 22px 24px;
         box-shadow: 0 12px 28px rgba(0,0,0,0.22);
         margin-bottom: 18px;
+    }
+
+    .gp-card-dark,
+    .gp-card-dark * {
+        color: white !important;
     }
 
     .gp-section-title {
@@ -112,11 +127,11 @@ st.markdown("""
     }
 
     .gp-card-dark .gp-section-title {
-        color: white;
+        color: white !important;
     }
 
     .gp-highlight {
-        color: #F97316;
+        color: #F97316 !important;
         font-weight: 800;
     }
 
@@ -126,6 +141,10 @@ st.markdown("""
         padding: 14px 16px;
         border: 1px solid rgba(12,109,132,0.10);
         box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+    }
+
+    div[data-testid="stMetric"] * {
+        color: #062B36 !important;
     }
 
     div[data-testid="stMetricLabel"] {
@@ -213,12 +232,16 @@ st.markdown("""
         color: rgba(255,255,255,0.85);
         font-size: 0.95rem;
     }
+
+    label, .stMarkdown, .stCaption, p, span {
+        color: inherit;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown(f"""
 <div class="gp-topbar">
-    {"<img src='data:image/png;base64," + logo_base64 + "'>" if logo_base64 else ""}
+    {"<img src='data:image/png;base64," + logo_base64 + "' style='max-height:72px;width:auto;object-fit:contain;'>" if logo_base64 else ""}
     <div>
         <div class="gp-title">GoPropostas</div>
         <div class="gp-subtitle">Sistema corporativo de propostas imobiliárias</div>
@@ -286,13 +309,8 @@ def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
         return bool(assinatura.get("assinatura_ativa"))
 
 def criar_assinatura_mp(user_id: str, email: str):
-    headers = {
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "user_id": user_id,
-        "email": email,
-    }
+    headers = {"Content-Type": "application/json"}
+    payload = {"user_id": user_id, "email": email}
 
     resp = requests.post(
         EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL,
@@ -310,13 +328,8 @@ def criar_assinatura_mp(user_id: str, email: str):
         }
 
 def criar_pix(user_id: str, email: str):
-    headers = {
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "user_id": user_id,
-        "email": email,
-    }
+    headers = {"Content-Type": "application/json"}
+    payload = {"user_id": user_id, "email": email}
 
     resp = requests.post(
         EDGE_FUNCTION_CREATE_PIX_URL,
@@ -345,11 +358,7 @@ def cadastrar_com_supabase(nome: str, email: str, senha: str):
     return supabase.auth.sign_up({
         "email": email,
         "password": senha,
-        "options": {
-            "data": {
-                "nome": nome
-            }
-        }
+        "options": {"data": {"nome": nome}}
     })
 
 def init_auth_state():

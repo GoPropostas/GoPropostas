@@ -1,5 +1,7 @@
 import os
+import base64
 import subprocess
+from pathlib import Path
 from datetime import date, datetime
 
 import pandas as pd
@@ -9,10 +11,196 @@ from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 from supabase import Client, create_client
 
-st.set_page_config(page_title="Sistema de Propostas", layout="centered")
+st.set_page_config(
+    page_title="GoPropostas",
+    page_icon="📄",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-subscription"
 EDGE_FUNCTION_CREATE_PIX_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-pix"
+LOGO_PATH = "Apresentação de logo moderno e profissional.png"
+
+# ---------------- VISUAL ----------------
+def img_to_base64(path: str) -> str:
+    if not Path(path).exists():
+        return ""
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+logo_base64 = img_to_base64(LOGO_PATH)
+
+st.markdown("""
+<style>
+    .stApp {
+        background: linear-gradient(180deg, #062B36 0%, #073846 55%, #0A4C5B 100%);
+    }
+
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #06232C 0%, #083845 100%);
+        border-right: 1px solid rgba(255,255,255,0.08);
+    }
+
+    [data-testid="stSidebar"] * {
+        color: #F4F7FA !important;
+    }
+
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+        max-width: 1380px;
+    }
+
+    .gp-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        margin-bottom: 20px;
+        padding: 18px 22px;
+        border-radius: 24px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        backdrop-filter: blur(12px);
+        box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+    }
+
+    .gp-topbar img {
+        height: 74px;
+        width: auto;
+        border-radius: 14px;
+    }
+
+    .gp-title {
+        color: #F4F7FA;
+        font-size: 2rem;
+        font-weight: 800;
+        margin: 0;
+        line-height: 1.1;
+    }
+
+    .gp-subtitle {
+        color: rgba(244,247,250,0.82);
+        font-size: 0.98rem;
+        margin-top: 4px;
+    }
+
+    .gp-card {
+        background: #F8FBFD;
+        border-radius: 24px;
+        padding: 22px 24px;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.16);
+        border: 1px solid rgba(12,109,132,0.10);
+        margin-bottom: 18px;
+    }
+
+    .gp-card-dark {
+        background: linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%);
+        color: white;
+        border-radius: 24px;
+        padding: 22px 24px;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.22);
+        margin-bottom: 18px;
+    }
+
+    .gp-section-title {
+        color: #062B36;
+        font-size: 1.15rem;
+        font-weight: 800;
+        margin-bottom: 14px;
+    }
+
+    .gp-card-dark .gp-section-title {
+        color: white;
+    }
+
+    .gp-highlight {
+        color: #F97316;
+        font-weight: 800;
+    }
+
+    div[data-testid="stMetric"] {
+        background: white;
+        border-radius: 18px;
+        padding: 14px 16px;
+        border: 1px solid rgba(12,109,132,0.10);
+        box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+    }
+
+    div[data-testid="stMetricLabel"] {
+        color: #0C6D84 !important;
+        font-weight: 700 !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        color: #062B36 !important;
+        font-weight: 800 !important;
+    }
+
+    .stButton > button,
+    .stDownloadButton > button {
+        background: linear-gradient(90deg, #F97316 0%, #FF8E2B 100%) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 14px !important;
+        font-weight: 800 !important;
+        min-height: 46px !important;
+        box-shadow: 0 10px 18px rgba(249,115,22,0.28) !important;
+    }
+
+    .stButton > button:hover,
+    .stDownloadButton > button:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.03);
+    }
+
+    .stTextInput > div > div > input,
+    .stNumberInput input,
+    .stDateInput input,
+    .stSelectbox div[data-baseweb="select"] > div,
+    .stTextArea textarea {
+        border-radius: 14px !important;
+        border: 1px solid rgba(12,109,132,0.18) !important;
+        background: #FFFFFF !important;
+    }
+
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        background: rgba(255,255,255,0.08);
+        color: #F4F7FA;
+        border-radius: 12px;
+        padding: 10px 16px;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background: #F97316 !important;
+        color: white !important;
+    }
+
+    hr {
+        border-color: rgba(255,255,255,0.12);
+    }
+
+    .gp-mini {
+        color: rgba(255,255,255,0.85);
+        font-size: 0.95rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown(f"""
+<div class="gp-topbar">
+    {"<img src='data:image/png;base64," + logo_base64 + "'>" if logo_base64 else ""}
+    <div>
+        <div class="gp-title">GoPropostas</div>
+        <div class="gp-subtitle">Sistema corporativo de propostas imobiliárias</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ---------------- SUPABASE LOGIN ----------------
 @st.cache_resource
@@ -56,7 +244,7 @@ def buscar_assinatura(user_id: str):
     )
     return resp.data[0] if resp.data else None
 
-def assinatura_pix_ativa(assinatura: dict) -> bool:
+def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
     if not assinatura:
         return False
     if not assinatura.get("assinatura_ativa"):
@@ -67,7 +255,7 @@ def assinatura_pix_ativa(assinatura: dict) -> bool:
         return bool(assinatura.get("assinatura_ativa"))
 
     try:
-        proximo_dt = datetime.fromisoformat(proximo.replace("Z", "+00:00"))
+        proximo_dt = datetime.fromisoformat(str(proximo).replace("Z", "+00:00"))
         agora = datetime.now(proximo_dt.tzinfo) if proximo_dt.tzinfo else datetime.now()
         return proximo_dt >= agora
     except Exception:
@@ -193,7 +381,9 @@ def tentar_restaurar_sessao():
         pass
 
 def tela_login():
-    st.title("🔐 Sistema de Propostas")
+    st.markdown('<div class="gp-card-dark">', unsafe_allow_html=True)
+    st.title("🔐 Entrar no sistema")
+    st.markdown('<div class="gp-mini">Acesse ou crie sua conta para continuar.</div>', unsafe_allow_html=True)
 
     abas = st.tabs(["Login", "Criar conta"])
 
@@ -255,6 +445,8 @@ def tela_login():
             except Exception as e:
                 st.error(f"Erro ao criar conta: {e}")
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 def logout():
     if st.sidebar.button("🚪 Sair", key="logout", use_container_width=True):
         try:
@@ -280,18 +472,21 @@ if not st.session_state["logado"]:
     st.stop()
 
 assinatura = buscar_assinatura(st.session_state["usuario_id"])
-acesso_liberado = assinatura_pix_ativa(assinatura)
+eh_admin = st.session_state.get("tipo") == "admin"
+acesso_liberado = eh_admin or assinatura_ativa_para_acesso(assinatura)
 
 if not acesso_liberado:
-    st.title("💳 Assinatura GoPropostas")
     st.markdown("""
-    ### 🔓 Acesso ao sistema
-
-    Para utilizar o sistema de propostas, escolha uma opção:
-
-    - **Cartão recorrente:** R$ 15,00/mês
-    - **PIX mensal:** R$ 15,00 a cada 30 dias
-    """)
+    <div class="gp-card-dark">
+        <div style="font-size:1.5rem;font-weight:800;">💳 Assinatura GoPropostas</div>
+        <div style="margin-top:8px;font-size:1rem;opacity:0.92;">
+            Escolha a melhor forma para acessar o sistema:
+        </div>
+        <div style="margin-top:16px;font-size:1.95rem;font-weight:900;">
+            R$ 15,00 <span style="font-size:1rem;font-weight:500;">/ mês</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if assinatura:
         st.info(f"Status atual: {assinatura.get('status', 'pendente')}")
@@ -301,7 +496,9 @@ if not acesso_liberado:
     col_pag_1, col_pag_2 = st.columns(2)
 
     with col_pag_1:
-        st.subheader("💳 Cartão")
+        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
+        st.markdown('<div class="gp-section-title">💳 Assinatura no cartão</div>', unsafe_allow_html=True)
+        st.write("Cobrança recorrente automática mensal.")
         if st.button("Assinar no cartão", use_container_width=True):
             try:
                 data = criar_assinatura_mp(
@@ -316,9 +513,12 @@ if not acesso_liberado:
                     st.error(f"Erro ao gerar link de pagamento: {data}")
             except Exception as e:
                 st.error(f"Erro ao iniciar assinatura: {e}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_pag_2:
-        st.subheader("🧾 PIX")
+        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
+        st.markdown('<div class="gp-section-title">🧾 PIX mensal</div>', unsafe_allow_html=True)
+        st.write("Pague manualmente via PIX e tenha acesso por 30 dias.")
         if st.button("Gerar PIX", use_container_width=True):
             try:
                 data = criar_pix(
@@ -334,6 +534,7 @@ if not acesso_liberado:
                     st.error(f"Erro ao gerar PIX: {data}")
             except Exception as e:
                 st.error(f"Erro ao gerar PIX: {e}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
 
@@ -503,13 +704,13 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     return arquivo
 
 # ---------------- APP ----------------
-st.subheader("🏢 Empreendimento")
+st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimento</div>', unsafe_allow_html=True)
+
 emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
 emp = empreendimentos[emp_nome]
 
 df = carregar_tabela(emp["tabela"])
 col = df.columns[0]
-
 unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote")
 linha = df[df[col] == unidade].iloc[0]
 
@@ -524,47 +725,62 @@ valor_imovel = buscar(linha, ["valor imóvel"])
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
-st.subheader("👤 Cliente")
-nome = st.text_input("Nome", key="nome")
-cpf = st.text_input("CPF", key="cpf")
-telefone = st.text_input("Telefone", key="tel")
-fixo = st.text_input("Fixo", key="fixo")
-nacionalidade = st.text_input("Nacionalidade", key="nac")
-profissao = st.text_input("Profissão", key="prof")
-fone_pref = st.text_input("Fone preferência", key="fonepref")
-estado_civil = st.text_input("Estado civil", key="civil")
-renda = st.text_input("Renda", key="renda")
-email = st.text_input("Email", key="email")
-data_nascimento = st.date_input(
-    "Data de nascimento do cliente",
-    value=date(1980, 1, 1),
-    min_value=date(1900, 1, 1),
-    max_value=date.today(),
-    key="data_nascimento"
-)
+st.markdown('</div>', unsafe_allow_html=True)
 
-st.subheader("👫 Cônjuge")
-conjuge = st.text_input("Nome", key="conj")
-cpf2 = st.text_input("CPF", key="cpf2")
-tel2 = st.text_input("Telefone", key="tel2")
-fixo2 = st.text_input("Fixo", key="fixo2")
-nac2 = st.text_input("Nacionalidade", key="nac2")
-prof2 = st.text_input("Profissão", key="prof2")
-fone2 = st.text_input("Fone preferência", key="fone2")
-civil2 = st.text_input("Estado civil", key="civil2")
-renda2 = st.text_input("Renda", key="renda2")
+col_form_1, col_form_2 = st.columns(2)
 
-st.subheader("📅 Datas de Vencimento")
-data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
-data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
-data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
+with col_form_1:
+    st.markdown('<div class="gp-card"><div class="gp-section-title">👤 Cliente</div>', unsafe_allow_html=True)
+    nome = st.text_input("Nome", key="nome")
+    cpf = st.text_input("CPF", key="cpf")
+    telefone = st.text_input("Telefone", key="tel")
+    fixo = st.text_input("Fixo", key="fixo")
+    nacionalidade = st.text_input("Nacionalidade", key="nac")
+    profissao = st.text_input("Profissão", key="prof")
+    fone_pref = st.text_input("Fone preferência", key="fonepref")
+    estado_civil = st.text_input("Estado civil", key="civil")
+    renda = st.text_input("Renda", key="renda")
+    email = st.text_input("Email", key="email")
+    data_nascimento = st.date_input(
+        "Data de nascimento do cliente",
+        value=date(1980, 1, 1),
+        min_value=date(1900, 1, 1),
+        max_value=date.today(),
+        key="data_nascimento"
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
 
-st.subheader("📅 Datas da Entrada")
-data_ato = st.date_input("Data do ato", key="data_ato")
-data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
-data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
+with col_form_2:
+    st.markdown('<div class="gp-card"><div class="gp-section-title">👫 Cônjuge</div>', unsafe_allow_html=True)
+    conjuge = st.text_input("Nome", key="conj")
+    cpf2 = st.text_input("CPF", key="cpf2")
+    tel2 = st.text_input("Telefone", key="tel2")
+    fixo2 = st.text_input("Fixo", key="fixo2")
+    nac2 = st.text_input("Nacionalidade", key="nac2")
+    prof2 = st.text_input("Profissão", key="prof2")
+    fone2 = st.text_input("Fone preferência", key="fone2")
+    civil2 = st.text_input("Estado civil", key="civil2")
+    renda2 = st.text_input("Renda", key="renda2")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-st.subheader("💰 Condições")
+col_data_1, col_data_2 = st.columns(2)
+
+with col_data_1:
+    st.markdown('<div class="gp-card"><div class="gp-section-title">📅 Datas de Vencimento</div>', unsafe_allow_html=True)
+    data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
+    data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
+    data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_data_2:
+    st.markdown('<div class="gp-card"><div class="gp-section-title">📅 Datas da Entrada</div>', unsafe_allow_html=True)
+    data_ato = st.date_input("Data do ato", key="data_ato")
+    data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
+    data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="gp-card"><div class="gp-section-title">💰 Condições</div>', unsafe_allow_html=True)
+
 valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
 personalizar = st.checkbox("⚙️ Personalizar", key="pers")
 
@@ -623,9 +839,9 @@ if personalizar and parcelas > 1 and not entrada_quitada:
         if parcela_diferente > restante:
             erros_validacao.append("A parcela diferente não pode ser maior que o restante da entrada.")
 
-st.divider()
-st.subheader("🏡 Detalhes do Lote")
+st.markdown('</div>', unsafe_allow_html=True)
 
+st.markdown('<div class="gp-card"><div class="gp-section-title">🏡 Detalhes do Lote</div>', unsafe_allow_html=True)
 col_l1, col_l2 = st.columns(2)
 with col_l1:
     st.metric("Unidade", unidade)
@@ -636,10 +852,9 @@ with col_l2:
     st.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
     st.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
     st.metric("Intermediação", f"R$ {intermed:,.2f}")
+st.markdown('</div>', unsafe_allow_html=True)
 
-st.divider()
-st.subheader("📊 Painel de Cálculo")
-
+st.markdown('<div class="gp-card"><div class="gp-section-title">📊 Painel de Cálculo</div>', unsafe_allow_html=True)
 col_c1, col_c2 = st.columns(2)
 with col_c1:
     st.metric("Entrada Total", f"R$ {entrada_total:,.2f}")
@@ -672,6 +887,8 @@ if avisos_validacao:
 if erros_validacao:
     for erro in erros_validacao:
         st.error(f"❌ {erro}")
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 proposta_pode_ser_gerada = len(erros_validacao) == 0
 
@@ -734,20 +951,24 @@ if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_p
 
     st.success("✅ Proposta gerada com sucesso!")
 
-    with open(pdf, "rb") as f_pdf:
-        st.download_button(
-            "📥 Baixar PDF",
-            f_pdf,
-            file_name=f"Proposta_{unidade}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
+    col_download_1, col_download_2 = st.columns(2)
 
-    with open(excel, "rb") as f_excel:
-        st.download_button(
-            "📥 Baixar Excel",
-            f_excel,
-            file_name=f"Proposta_{unidade}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+    with col_download_1:
+        with open(pdf, "rb") as f_pdf:
+            st.download_button(
+                "📥 Baixar PDF",
+                f_pdf,
+                file_name=f"Proposta_{unidade}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+    with col_download_2:
+        with open(excel, "rb") as f_excel:
+            st.download_button(
+                "📥 Baixar Excel",
+                f_excel,
+                file_name=f"Proposta_{unidade}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )

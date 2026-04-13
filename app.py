@@ -20,7 +20,7 @@ st.set_page_config(
 
 EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-subscription"
 EDGE_FUNCTION_CREATE_PIX_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-pix"
-LOGO_PATH = "logo_gopropostas.png"
+LOGO_PATH = "Apresentação de logo moderno e profissional.png"
 
 # ---------------- VISUAL ----------------
 def img_to_base64(path: str) -> str:
@@ -159,10 +159,34 @@ st.markdown("""
     .stNumberInput input,
     .stDateInput input,
     .stSelectbox div[data-baseweb="select"] > div,
-    .stTextArea textarea {
+    .stTextArea textarea,
+    div[data-baseweb="input"] input,
+    div[data-baseweb="base-input"] input {
         border-radius: 14px !important;
         border: 1px solid rgba(12,109,132,0.18) !important;
         background: #FFFFFF !important;
+        color: #062B36 !important;
+        -webkit-text-fill-color: #062B36 !important;
+        caret-color: #062B36 !important;
+    }
+
+    .stTextInput > div > div > input::placeholder,
+    .stNumberInput input::placeholder,
+    .stDateInput input::placeholder,
+    .stTextArea textarea::placeholder,
+    div[data-baseweb="input"] input::placeholder,
+    div[data-baseweb="base-input"] input::placeholder {
+        color: #6B7C85 !important;
+        opacity: 1 !important;
+    }
+
+    .stSelectbox div[data-baseweb="select"] * {
+        color: #062B36 !important;
+    }
+
+    .stDateInput svg,
+    .stSelectbox svg {
+        fill: #062B36 !important;
     }
 
     .stTabs [data-baseweb="tab-list"] {

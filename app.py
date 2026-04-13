@@ -3,6 +3,7 @@ import subprocess
 from datetime import date
 
 import pandas as pd
+import requests
 import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
@@ -10,8 +11,7 @@ from supabase import Client, create_client
 
 st.set_page_config(page_title="Sistema de Propostas", layout="centered")
 
-APP_URL = "https://gopropostas-lzquxbgaxn9gmku2hxnwnx.streamlit.app/"
-MERCADO_PAGO_LINK = "https://mpago.la/1ifT9Sj"
+EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-subscription"
 
 # ---------------- SUPABASE LOGIN ----------------
 @st.cache_resource
@@ -43,6 +43,35 @@ def buscar_profile_por_email(email: str):
     )
     return resp.data[0] if resp.data else None
 
+def buscar_assinatura(user_id: str):
+    supabase = get_supabase()
+    resp = (
+        supabase.table("assinaturas")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return resp.data[0] if resp.data else None
+
+def criar_assinatura_mp(user_id: str, email: str):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {st.secrets['SUPABASE_KEY']}",
+    }
+    payload = {
+        "user_id": user_id,
+        "email": email
+    }
+    resp = requests.post(
+        EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL,
+        json=payload,
+        headers=headers,
+        timeout=30
+    )
+    return resp.json()
+
 def login_com_supabase(email: str, senha: str):
     supabase = get_supabase()
     return supabase.auth.sign_in_with_password({
@@ -65,12 +94,12 @@ def cadastrar_com_supabase(nome: str, email: str, senha: str):
 def init_auth_state():
     defaults = {
         "logado": False,
+        "usuario_id": "",
         "usuario_email": "",
         "usuario_nome": "",
         "tipo": "",
         "sb_access_token": "",
         "sb_refresh_token": "",
-        "assinatura_ativa": False,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -78,6 +107,7 @@ def init_auth_state():
 
 def aplicar_login(profile: dict):
     st.session_state["logado"] = True
+    st.session_state["usuario_id"] = profile["id"]
     st.session_state["usuario_email"] = profile["email"]
     st.session_state["usuario_nome"] = profile.get("nome") or profile["email"]
     st.session_state["tipo"] = profile["tipo"]
@@ -112,64 +142,6 @@ def tentar_restaurar_sessao():
             aplicar_login(profile)
     except Exception:
         pass
-
-def tela_assinatura():
-    qp = st.query_params
-    status_pagamento = qp.get("mp_status", "")
-
-    if status_pagamento == "approved":
-        st.session_state["assinatura_ativa"] = True
-        st.success("Pagamento aprovado! Agora você já pode criar sua conta ou fazer login.")
-    elif status_pagamento == "pending":
-        st.warning("Seu pagamento está pendente. Assim que for confirmado, o acesso será liberado.")
-    elif status_pagamento == "failure":
-        st.error("O pagamento não foi concluído. Tente novamente.")
-
-    if st.session_state["assinatura_ativa"]:
-        return
-
-    st.markdown(
-        """
-        <div style="
-            padding: 28px;
-            border-radius: 18px;
-            background: linear-gradient(135deg, #0f172a, #1e3a8a);
-            color: white;
-            text-align: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-            margin-top: 20px;
-            margin-bottom: 20px;
-        ">
-            <h1 style="margin-bottom: 8px;">GoPropostas</h1>
-            <h3 style="margin-top: 0; font-weight: 500;">Assinatura mensal</h3>
-            <p style="font-size: 18px; margin-top: 16px; margin-bottom: 10px;">
-                Tenha acesso completo ao sistema por
-            </p>
-            <div style="font-size: 42px; font-weight: bold; margin: 12px 0;">
-                R$ 15,00<span style="font-size:18px; font-weight:400;">/mês</span>
-            </div>
-            <p style="font-size: 15px; opacity: 0.95;">
-                Após o pagamento, você será redirecionado para criar sua conta e acessar o sistema.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.link_button(
-        "💳 Assinar com Mercado Pago",
-        MERCADO_PAGO_LINK,
-        use_container_width=True,
-    )
-
-    st.info(
-        "Redirecionamento após o pagamento:\n"
-        f"Sucesso: {APP_URL}?mp_status=approved\n\n"
-        f"Pendente: {APP_URL}?mp_status=pending\n\n"
-        f"Falha: {APP_URL}?mp_status=failure"
-    )
-
-    st.stop()
 
 def tela_login():
     st.title("🔐 Sistema de Propostas")
@@ -242,7 +214,7 @@ def logout():
             pass
 
         for chave in [
-            "logado", "usuario_email", "usuario_nome", "tipo",
+            "logado", "usuario_id", "usuario_email", "usuario_nome", "tipo",
             "sb_access_token", "sb_refresh_token"
         ]:
             if chave in st.session_state:
@@ -253,10 +225,44 @@ def logout():
 # ---------------- CONTROLE LOGIN ----------------
 init_auth_state()
 tentar_restaurar_sessao()
-tela_assinatura()
 
 if not st.session_state["logado"]:
     tela_login()
+    st.stop()
+
+assinatura = buscar_assinatura(st.session_state["usuario_id"])
+
+if not assinatura or not assinatura.get("assinatura_ativa"):
+    st.title("💳 Assinatura GoPropostas")
+    st.markdown("""
+    ### 🔓 Acesso ao sistema
+
+    Para utilizar o sistema de propostas, é necessário uma assinatura mensal.
+
+    💰 Valor: **R$ 15,00/mês**
+    """)
+
+    if assinatura:
+        st.info(f"Status atual: {assinatura.get('status', 'pendente')}")
+        if assinatura.get("proximo_cobranca_em"):
+            st.caption(f"Próxima cobrança: {assinatura.get('proximo_cobranca_em')}")
+
+    if st.button("Assinar agora", use_container_width=True):
+        try:
+            data = criar_assinatura_mp(
+                st.session_state["usuario_id"],
+                st.session_state["usuario_email"]
+            )
+
+            link = data.get("init_point") or data.get("sandbox_init_point")
+
+            if link:
+                st.link_button("👉 Ir para pagamento", link, use_container_width=True)
+            else:
+                st.error(f"Erro ao gerar link de pagamento: {data}")
+        except Exception as e:
+            st.error(f"Erro ao iniciar assinatura: {e}")
+
     st.stop()
 
 st.sidebar.write(f"👤 {st.session_state['usuario_nome']}")
@@ -327,6 +333,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb = load_workbook(modelo)
     ws = wb.active
 
+    # CLIENTE
     ws["E5"] = d["nome"]
     ws["D6"] = d["cpf"]
     ws["J6"] = d["telefone"]
@@ -338,6 +345,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["O8"] = d["renda"]
     ws["E9"] = d["email"]
 
+    # CÔNJUGE
     ws["G11"] = d["conjuge"]
     ws["D13"] = d["cpf2"]
     ws["J13"] = d["tel2"]
@@ -348,6 +356,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["D15"] = d["civil2"]
     ws["O15"] = d["renda2"]
 
+    # LOTE
     ws["G18"] = d["proprietario"]
     ws["G19"] = d["empreendimento"]
     ws["C20"] = d["logradouro"]
@@ -358,6 +367,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["J21"] = d["entrada_total"]
     ws["O21"] = d["valor_imovel"]
 
+    # BLOCO 24–26
     ws["B24"] = 1
     ws["C24"] = d["entrada_imovel"]
     ws["G24"] = "Única"
@@ -377,6 +387,7 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     ws["P25"] = "Reajustável"
     ws["P26"] = "Reajustável"
 
+    # ENTRADA
     ws["B33"] = 1
     ws["C33"] = d["entrada_cliente"]
     ws["G33"] = "Única"
@@ -446,6 +457,7 @@ valor_imovel = buscar(linha, ["valor imóvel"])
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
+# CLIENTE
 st.subheader("👤 Cliente")
 nome = st.text_input("Nome", key="nome")
 cpf = st.text_input("CPF", key="cpf")
@@ -465,6 +477,7 @@ data_nascimento = st.date_input(
     key="data_nascimento"
 )
 
+# CÔNJUGE
 st.subheader("👫 Cônjuge")
 conjuge = st.text_input("Nome", key="conj")
 cpf2 = st.text_input("CPF", key="cpf2")
@@ -476,16 +489,19 @@ fone2 = st.text_input("Fone preferência", key="fone2")
 civil2 = st.text_input("Estado civil", key="civil2")
 renda2 = st.text_input("Renda", key="renda2")
 
+# DATAS DE VENCIMENTO
 st.subheader("📅 Datas de Vencimento")
 data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
 data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
 data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
 
+# DATAS DA ENTRADA
 st.subheader("📅 Datas da Entrada")
 data_ato = st.date_input("Data do ato", key="data_ato")
 data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
 data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
 
+# CONDIÇÕES
 st.subheader("💰 Condições")
 valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
 personalizar = st.checkbox("⚙️ Personalizar", key="pers")
@@ -493,6 +509,7 @@ personalizar = st.checkbox("⚙️ Personalizar", key="pers")
 ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0
 ato = ato_manual if ato_manual > 0 else ato_min
 
+# Entrada cliente vai para C33 e também abate das parcelas
 restante = entrada_total - valor_cliente
 if restante < 0:
     restante = 0
@@ -518,6 +535,7 @@ parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
 
 usar_diferente = False
 parcela_diferente = 0
+data_parcela_diferente = ""
 parcelas_iguais = 0
 valor_parcela_igual = 0
 
@@ -538,13 +556,13 @@ if personalizar and parcelas > 1 and not entrada_quitada:
     if abs(parcela_editada - valor_parcela_igual) > 0.01:
         usar_diferente = True
         parcela_diferente = parcela_editada
-
-        if parcelas > 1:
-            parcelas_iguais = parcelas - 1
+        parcelas_iguais = parcelas - 1
+        data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
 
         if parcela_diferente > restante:
             erros_validacao.append("A parcela diferente não pode ser maior que o restante da entrada.")
 
+# DETALHES DO LOTE
 st.divider()
 st.subheader("🏡 Detalhes do Lote")
 
@@ -559,6 +577,7 @@ with col_l2:
     st.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
     st.metric("Intermediação", f"R$ {intermed:,.2f}")
 
+# PAINEL DE CÁLCULO
 st.divider()
 st.subheader("📊 Painel de Cálculo")
 
@@ -597,6 +616,7 @@ if erros_validacao:
 
 proposta_pode_ser_gerada = len(erros_validacao) == 0
 
+# GERAR
 if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_pode_ser_gerada):
     data_final_36_parcelas = adicionar_meses(data_parcelas, 36)
     idade_apos_36 = calcular_idade_em_data(data_nascimento, data_final_36_parcelas)
@@ -642,12 +662,13 @@ if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_p
         "valor_parcela_igual": valor_parcela_igual,
         "usar_diferente": usar_diferente,
         "parcela_diferente": parcela_diferente,
+        "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else "",
         "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
         "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
         "data_saldo": data_saldo.strftime("%d/%m/%Y"),
         "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
         "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
-        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if usar_diferente and data_parc_diferente else "",
+        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else "",
     }
 
     excel = preencher_proposta(dados)

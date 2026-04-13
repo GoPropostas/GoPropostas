@@ -1,6 +1,6 @@
 import os
 import subprocess
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 import requests
@@ -11,7 +11,8 @@ from supabase import Client, create_client
 
 st.set_page_config(page_title="Sistema de Propostas", layout="centered")
 
-EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-subscription"
+EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://SEU-PROJETO.supabase.co/functions/v1/create-subscription"
+EDGE_FUNCTION_CREATE_PIX_URL = "https://SEU-PROJETO.supabase.co/functions/v1/create-pix"
 
 # ---------------- SUPABASE LOGIN ----------------
 @st.cache_resource
@@ -55,6 +56,23 @@ def buscar_assinatura(user_id: str):
     )
     return resp.data[0] if resp.data else None
 
+def assinatura_pix_ativa(assinatura: dict) -> bool:
+    if not assinatura:
+        return False
+    if not assinatura.get("assinatura_ativa"):
+        return False
+
+    proximo = assinatura.get("proximo_cobranca_em")
+    if not proximo:
+        return bool(assinatura.get("assinatura_ativa"))
+
+    try:
+        proximo_dt = datetime.fromisoformat(proximo.replace("Z", "+00:00"))
+        agora = datetime.now(proximo_dt.tzinfo) if proximo_dt.tzinfo else datetime.now()
+        return proximo_dt >= agora
+    except Exception:
+        return bool(assinatura.get("assinatura_ativa"))
+
 def criar_assinatura_mp(user_id: str, email: str):
     headers = {
         "Content-Type": "application/json",
@@ -76,6 +94,30 @@ def criar_assinatura_mp(user_id: str, email: str):
     except Exception:
         return {
             "error": f"Resposta inválida da função: status {resp.status_code}",
+            "raw_text": resp.text,
+        }
+
+def criar_pix(user_id: str, email: str):
+    headers = {
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "user_id": user_id,
+        "email": email,
+    }
+
+    resp = requests.post(
+        EDGE_FUNCTION_CREATE_PIX_URL,
+        json=payload,
+        headers=headers,
+        timeout=30,
+    )
+
+    try:
+        return resp.json()
+    except Exception:
+        return {
+            "error": f"Resposta inválida da função PIX: status {resp.status_code}",
             "raw_text": resp.text,
         }
 
@@ -238,37 +280,60 @@ if not st.session_state["logado"]:
     st.stop()
 
 assinatura = buscar_assinatura(st.session_state["usuario_id"])
+acesso_liberado = assinatura_pix_ativa(assinatura)
 
-if not assinatura or not assinatura.get("assinatura_ativa"):
+if not acesso_liberado:
     st.title("💳 Assinatura GoPropostas")
     st.markdown("""
     ### 🔓 Acesso ao sistema
 
-    Para utilizar o sistema de propostas, é necessário uma assinatura mensal.
+    Para utilizar o sistema de propostas, escolha uma opção:
 
-    💰 Valor: **R$ 15,00/mês**
+    - **Cartão recorrente:** R$ 15,00/mês
+    - **PIX mensal:** R$ 15,00 a cada 30 dias
     """)
 
     if assinatura:
         st.info(f"Status atual: {assinatura.get('status', 'pendente')}")
         if assinatura.get("proximo_cobranca_em"):
-            st.caption(f"Próxima cobrança: {assinatura.get('proximo_cobranca_em')}")
+            st.caption(f"Validade / próxima cobrança: {assinatura.get('proximo_cobranca_em')}")
 
-    if st.button("Assinar agora", use_container_width=True):
-        try:
-            data = criar_assinatura_mp(
-                st.session_state["usuario_id"],
-                st.session_state["usuario_email"]
-            )
+    col_pag_1, col_pag_2 = st.columns(2)
 
-            link = data.get("init_point") or data.get("sandbox_init_point")
+    with col_pag_1:
+        st.subheader("💳 Cartão")
+        if st.button("Assinar no cartão", use_container_width=True):
+            try:
+                data = criar_assinatura_mp(
+                    st.session_state["usuario_id"],
+                    st.session_state["usuario_email"]
+                )
+                link = data.get("init_point") or data.get("sandbox_init_point")
 
-            if link:
-                st.link_button("👉 Ir para pagamento", link, use_container_width=True)
-            else:
-                st.error(f"Erro ao gerar link de pagamento: {data}")
-        except Exception as e:
-            st.error(f"Erro ao iniciar assinatura: {e}")
+                if link:
+                    st.link_button("👉 Ir para pagamento", link, use_container_width=True)
+                else:
+                    st.error(f"Erro ao gerar link de pagamento: {data}")
+            except Exception as e:
+                st.error(f"Erro ao iniciar assinatura: {e}")
+
+    with col_pag_2:
+        st.subheader("🧾 PIX")
+        if st.button("Gerar PIX", use_container_width=True):
+            try:
+                data = criar_pix(
+                    st.session_state["usuario_id"],
+                    st.session_state["usuario_email"]
+                )
+
+                if "qr_code_base64" in data:
+                    st.image(f"data:image/png;base64,{data['qr_code_base64']}")
+                    st.code(data["qr_code"])
+                    st.success("Escaneie ou copie o PIX.")
+                else:
+                    st.error(f"Erro ao gerar PIX: {data}")
+            except Exception as e:
+                st.error(f"Erro ao gerar PIX: {e}")
 
     st.stop()
 

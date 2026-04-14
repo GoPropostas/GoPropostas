@@ -37,7 +37,6 @@ st.markdown("""
         background: linear-gradient(180deg, #062B36 0%, #073846 55%, #0A4C5B 100%);
     }
 
-    /* mais espaço no topo para não cortar a logo por causa da barra do Streamlit */
     .block-container {
         padding-top: 5rem !important;
         padding-bottom: 2rem;
@@ -343,6 +342,20 @@ def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
     except Exception:
         return bool(assinatura.get("assinatura_ativa"))
 
+def atualizar_profile_config(user_id: str, nome: str, nome_imobiliaria: str, nome_gerente: str, nome_diretor: str):
+    return (
+        get_supabase()
+        .table("profiles")
+        .update({
+            "nome": nome,
+            "nome_imobiliaria": nome_imobiliaria,
+            "nome_gerente": nome_gerente,
+            "nome_diretor": nome_diretor,
+        })
+        .eq("id", user_id)
+        .execute()
+    )
+
 def criar_assinatura_mp(user_id: str, email: str):
     headers = {"Content-Type": "application/json"}
     payload = {"user_id": user_id, "email": email}
@@ -388,12 +401,26 @@ def login_com_supabase(email: str, senha: str):
         "password": senha,
     })
 
-def cadastrar_com_supabase(nome: str, email: str, senha: str):
+def cadastrar_com_supabase(
+    nome: str,
+    email: str,
+    senha: str,
+    nome_imobiliaria: str,
+    nome_gerente: str,
+    nome_diretor: str,
+):
     supabase = get_supabase()
     return supabase.auth.sign_up({
         "email": email,
         "password": senha,
-        "options": {"data": {"nome": nome}}
+        "options": {
+            "data": {
+                "nome": nome,
+                "nome_imobiliaria": nome_imobiliaria,
+                "nome_gerente": nome_gerente,
+                "nome_diretor": nome_diretor,
+            }
+        }
     })
 
 def init_auth_state():
@@ -405,6 +432,7 @@ def init_auth_state():
         "tipo": "",
         "sb_access_token": "",
         "sb_refresh_token": "",
+        "abrir_configuracoes": False,
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -415,7 +443,7 @@ def aplicar_login(profile: dict):
     st.session_state["usuario_id"] = profile["id"]
     st.session_state["usuario_email"] = profile["email"]
     st.session_state["usuario_nome"] = profile.get("nome") or profile["email"]
-    st.session_state["tipo"] = profile["tipo"]
+    st.session_state["tipo"] = profile.get("tipo", "corretor")
 
 def salvar_tokens_da_sessao(auth_response):
     session = getattr(auth_response, "session", None)
@@ -484,6 +512,9 @@ def tela_login():
 
     with abas[1]:
         nome_cadastro = st.text_input("Nome completo", key="cad_nome")
+        nome_imobiliaria = st.text_input("Nome da Imobiliária completo", key="cad_imobiliaria")
+        nome_gerente = st.text_input("Nome do gerente completo", key="cad_gerente")
+        nome_diretor = st.text_input("Nome do diretor da imobiliária completo", key="cad_diretor")
         email_cadastro = st.text_input("Email", key="cad_email")
         senha_cadastro = st.text_input("Senha", type="password", key="cad_senha")
         confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
@@ -492,7 +523,15 @@ def tela_login():
             if senha_cadastro != confirmar:
                 st.warning("Senhas não conferem.")
                 return
-            if not nome_cadastro.strip() or not email_cadastro.strip() or not senha_cadastro.strip():
+
+            if (
+                not nome_cadastro.strip()
+                or not nome_imobiliaria.strip()
+                or not nome_gerente.strip()
+                or not nome_diretor.strip()
+                or not email_cadastro.strip()
+                or not senha_cadastro.strip()
+            ):
                 st.warning("Preencha todos os campos.")
                 return
 
@@ -502,7 +541,14 @@ def tela_login():
                     st.warning("Já existe uma conta com esse email.")
                     return
 
-                resp = cadastrar_com_supabase(nome_cadastro, email_cadastro, senha_cadastro)
+                resp = cadastrar_com_supabase(
+                    nome_cadastro,
+                    email_cadastro,
+                    senha_cadastro,
+                    nome_imobiliaria,
+                    nome_gerente,
+                    nome_diretor,
+                )
                 user = resp.user
 
                 if user:
@@ -524,7 +570,7 @@ def logout():
 
         for chave in [
             "logado", "usuario_id", "usuario_email", "usuario_nome", "tipo",
-            "sb_access_token", "sb_refresh_token"
+            "sb_access_token", "sb_refresh_token", "abrir_configuracoes"
         ]:
             if chave in st.session_state:
                 del st.session_state[chave]
@@ -609,7 +655,51 @@ if not acesso_liberado:
 st.sidebar.write(f"👤 {st.session_state['usuario_nome']}")
 st.sidebar.write(f"📧 {st.session_state['usuario_email']}")
 st.sidebar.write(f"🔑 {st.session_state['tipo']}")
+
+if st.sidebar.button("⚙️ Configurações", use_container_width=True):
+    st.session_state["abrir_configuracoes"] = not st.session_state.get("abrir_configuracoes", False)
+
 logout()
+
+if st.session_state.get("abrir_configuracoes", False):
+    profile = buscar_profile_por_id(st.session_state["usuario_id"])
+
+    st.markdown('<div class="gp-card"><div class="gp-section-title">⚙️ Configurações da Conta</div>', unsafe_allow_html=True)
+
+    if profile:
+        novo_nome = st.text_input("Nome completo", value=profile.get("nome", ""), key="cfg_nome")
+        nova_imobiliaria = st.text_input(
+            "Nome da Imobiliária completo",
+            value=profile.get("nome_imobiliaria", ""),
+            key="cfg_imobiliaria"
+        )
+        novo_gerente = st.text_input(
+            "Nome do gerente completo",
+            value=profile.get("nome_gerente", ""),
+            key="cfg_gerente"
+        )
+        novo_diretor = st.text_input(
+            "Nome do diretor da imobiliária completo",
+            value=profile.get("nome_diretor", ""),
+            key="cfg_diretor"
+        )
+
+        if st.button("Salvar configurações", key="btn_salvar_cfg", use_container_width=True):
+            try:
+                atualizar_profile_config(
+                    st.session_state["usuario_id"],
+                    novo_nome,
+                    nova_imobiliaria,
+                    novo_gerente,
+                    novo_diretor,
+                )
+                st.session_state["usuario_nome"] = novo_nome
+                st.success("Configurações salvas com sucesso!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao salvar configurações: {e}")
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- EMPREENDIMENTOS ----------------
 empreendimentos = {

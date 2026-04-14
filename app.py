@@ -909,6 +909,7 @@ def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
     ws["D17"] = d["empreendimento_contrato"]
     ws["J17"] = d["unidade"]
     ws["J19"] = d["valor_negocio"]
+    ws["D19"] = d["data_contrato_intermediacao"]
     ws["K23"] = d["valor_total_comissao"]
 
     ws["E26"] = d["valor_imobiliaria"]
@@ -916,6 +917,12 @@ def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
     ws["E28"] = d["valor_ato_minimo"]
     ws["E29"] = d["valor_gerente"]
     ws["E30"] = d["valor_total_distribuicao"]
+
+    ws["F26"] = f"{d['porcentagem_imobiliaria']:.2f}%"
+    ws["F27"] = f"{d['porcentagem_corretor']:.2f}%"
+    ws["F28"] = "0.30%"
+    ws["F29"] = f"{d['porcentagem_gerente']:.2f}%"
+    ws["F30"] = "5.30%"
 
     ws["C50"] = d["nome_corretor"]
     ws["J50"] = d["nome_gerente"]
@@ -935,8 +942,14 @@ st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendime
 emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
 emp = empreendimentos[emp_nome]
 
-mod_time = os.path.getmtime(emp["tabela"])
-df = carregar_tabela(emp["tabela"], mod_time)
+caminho_tabela = Path(emp["tabela"])
+if not caminho_tabela.exists():
+    st.error(f"Arquivo da tabela não encontrado: {emp['tabela']}")
+    st.stop()
+
+mod_time = caminho_tabela.stat().st_mtime
+df = carregar_tabela(str(caminho_tabela), mod_time)
+
 col = df.columns[0]
 unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote")
 linha = df[df[col] == unidade].iloc[0]
@@ -1131,14 +1144,14 @@ st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('<div class="gp-card"><div class="gp-section-title">📑 Painel Contrato de Intermediação</div>', unsafe_allow_html=True)
 col_i1, col_i2, col_i3 = st.columns(3)
 with col_i1:
-    st.metric("5,30% do negócio (K23)", formatar_moeda(valor_total_comissao))
-    st.metric("Imobiliária (E26)", formatar_moeda(valor_imobiliaria))
+    st.metric("5,30% do negócio", formatar_moeda(valor_total_comissao))
+    st.metric("Imobiliária", formatar_moeda(valor_imobiliaria))
 with col_i2:
-    st.metric("Corretor (E27)", formatar_moeda(valor_corretor))
-    st.metric("0,30% entrada mínima (E28)", formatar_moeda(valor_ato_minimo))
+    st.metric("Corretor", formatar_moeda(valor_corretor))
+    st.metric("0,30% entrada mínima", formatar_moeda(valor_ato_minimo))
 with col_i3:
-    st.metric("Gerente (E29)", formatar_moeda(valor_gerente))
-    st.metric("Total distribuição (E30)", formatar_moeda(valor_total_distribuicao))
+    st.metric("Gerente", formatar_moeda(valor_gerente))
+    st.metric("Total distribuição", formatar_moeda(valor_total_distribuicao))
 st.markdown('</div>', unsafe_allow_html=True)
 
 if avisos_validacao:

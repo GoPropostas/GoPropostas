@@ -1,5 +1,7 @@
 import os
+import io
 import base64
+import zipfile
 import subprocess
 from pathlib import Path
 from datetime import date, datetime
@@ -20,7 +22,9 @@ st.set_page_config(
 
 EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-subscription"
 EDGE_FUNCTION_CREATE_PIX_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-pix"
-LOGO_PATH = "logo_gopropostas.png"
+LOGO_PATH = "Apresentação de logo moderno e profissional.png"
+CONTRATO_INTERMEDIACAO_MODELO = "Contrato de Intermediação (3).xlsx"
+MODELO_PROPOSTA = "modelo_proposta.xlsx"
 
 # ---------------- VISUAL ----------------
 def img_to_base64(path: str) -> str:
@@ -708,6 +712,7 @@ empreendimentos = {
         "nome": "Loteamento Frei Galvão",
         "logradouro": "Avenida Fazenda Bananal",
         "tabela": "tabela_frei_galvao.xlsx",
+        "contrato_nome": "Residencial Frei Galvão",
     }
 }
 
@@ -759,8 +764,20 @@ def adicionar_meses(data_base: date, meses: int) -> date:
     dia = min(data_base.day, ultimo_dia)
     return date(ano, mes, dia)
 
-# ---------------- EXCEL ----------------
-def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
+def formatar_moeda(valor: float) -> str:
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def criar_zip_bytes(arquivos: list[str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for arquivo in arquivos:
+            if os.path.exists(arquivo):
+                zf.write(arquivo, arcname=os.path.basename(arquivo))
+    buffer.seek(0)
+    return buffer.getvalue()
+
+# ---------------- EXCEL PROPOSTA ----------------
+def preencher_proposta(d, modelo=MODELO_PROPOSTA):
     wb = load_workbook(modelo)
     ws = wb.active
 
@@ -861,7 +878,46 @@ def preencher_proposta(d, modelo="modelo_proposta.xlsx"):
     wb.save(arquivo)
     return arquivo
 
+# ---------------- EXCEL CONTRATO ----------------
+def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
+    wb = load_workbook(modelo)
+    ws = wb.active
+
+    ws["C5"] = d["nome"]
+    ws["C6"] = d["conjuge"]
+    ws["I5"] = d["cpf"]
+    ws["I6"] = d["cpf2"]
+    ws["L5"] = d["rg"]
+    ws["L6"] = d["rg2"]
+
+    ws["C10"] = d["nome_imobiliaria"]
+    ws["C11"] = d["nome_corretor"]
+    ws["C12"] = "Monyke Procopio"
+    ws["C13"] = d["nome_gerente"]
+    ws["C14"] = d["nome_diretor"]
+
+    ws["D17"] = d["empreendimento_contrato"]
+    ws["J17"] = d["unidade"]
+    ws["J19"] = d["valor_negocio"]
+    ws["K23"] = d["valor_total_comissao"]
+
+    ws["E26"] = d["valor_imobiliaria"]
+    ws["E27"] = d["valor_corretor"]
+    ws["E28"] = d["valor_ato_minimo"]
+    ws["E29"] = d["valor_gerente"]
+    ws["E30"] = d["valor_total_distribuicao"]
+
+    ws["C50"] = d["nome_corretor"]
+    ws["J50"] = d["nome_gerente"]
+    ws["C54"] = d["nome_diretor"]
+
+    arquivo = "contrato_intermediacao.xlsx"
+    wb.save(arquivo)
+    return arquivo
+
 # ---------------- APP ----------------
+profile_atual = buscar_profile_por_id(st.session_state["usuario_id"]) or {}
+
 st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimento</div>', unsafe_allow_html=True)
 
 emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
@@ -891,6 +947,7 @@ with col_form_1:
     st.markdown('<div class="gp-card"><div class="gp-section-title">👤 Cliente</div>', unsafe_allow_html=True)
     nome = st.text_input("Nome", key="nome")
     cpf = st.text_input("CPF", key="cpf")
+    rg = st.text_input("RG", key="rg")
     telefone = st.text_input("Telefone", key="tel")
     fixo = st.text_input("Fixo", key="fixo")
     nacionalidade = st.text_input("Nacionalidade", key="nac")
@@ -912,6 +969,7 @@ with col_form_2:
     st.markdown('<div class="gp-card"><div class="gp-section-title">👫 Cônjuge</div>', unsafe_allow_html=True)
     conjuge = st.text_input("Nome", key="conj")
     cpf2 = st.text_input("CPF", key="cpf2")
+    rg2 = st.text_input("RG", key="rg2")
     tel2 = st.text_input("Telefone", key="tel2")
     fixo2 = st.text_input("Fixo", key="fixo2")
     nac2 = st.text_input("Nacionalidade", key="nac2")
@@ -960,7 +1018,7 @@ if valor_cliente <= 0:
 
 if valor_cliente < valor_minimo_entrada:
     erros_validacao.append(
-        f"Entrada cliente menor que o mínimo. Mínimo recomendado: R$ {valor_minimo_entrada:,.2f}"
+        f"Entrada cliente menor que o mínimo. Mínimo recomendado: {formatar_moeda(valor_minimo_entrada)}"
     )
 
 if valor_cliente > entrada_total:
@@ -999,29 +1057,47 @@ if personalizar and parcelas > 1 and not entrada_quitada:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
+with st.expander("📑 Detalhes Contrato de Intermediação", expanded=False):
+    data_contrato_intermediacao = st.date_input("Data Contrato de Intermediação", key="data_contrato_intermediacao")
+    porcentagem_imobiliaria = st.number_input("Porcentagem Imobiliária", min_value=0.0, step=0.01, key="pct_imobiliaria")
+    porcentagem_corretor = st.number_input("Porcentagem Corretor", min_value=0.0, step=0.01, key="pct_corretor")
+    porcentagem_gerente = st.number_input("Porcentagem Gerente", min_value=0.0, step=0.01, key="pct_gerente")
+
+valor_imobiliaria = valor_negocio * (porcentagem_imobiliaria / 100)
+valor_corretor = valor_negocio * (porcentagem_corretor / 100)
+valor_gerente = valor_negocio * (porcentagem_gerente / 100)
+valor_ato_minimo = ato_min
+valor_total_distribuicao = valor_imobiliaria + valor_corretor + valor_ato_minimo + valor_gerente
+valor_total_comissao = valor_negocio * 0.053
+
+if abs(valor_total_distribuicao - valor_total_comissao) > 0.01:
+    erros_validacao.append(
+        "Contrato de intermediação inválido: a soma de E26, E27, E28 e E29 deve ser exatamente 5,30% do valor total do negócio."
+    )
+
 st.markdown('<div class="gp-card"><div class="gp-section-title">🏡 Detalhes do Lote</div>', unsafe_allow_html=True)
 col_l1, col_l2 = st.columns(2)
 with col_l1:
     st.metric("Unidade", unidade)
     st.metric("Área (m²)", f"{area:.2f}")
-    st.metric("Entrada Imóvel", f"R$ {entrada_imovel:,.2f}")
+    st.metric("Entrada Imóvel", formatar_moeda(entrada_imovel))
 
 with col_l2:
-    st.metric("Valor Negócio", f"R$ {valor_negocio:,.2f}")
-    st.metric("Valor Imóvel", f"R$ {valor_imovel:,.2f}")
-    st.metric("Intermediação", f"R$ {intermed:,.2f}")
+    st.metric("Valor Negócio", formatar_moeda(valor_negocio))
+    st.metric("Valor Imóvel", formatar_moeda(valor_imovel))
+    st.metric("Intermediação", formatar_moeda(intermed))
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="gp-card"><div class="gp-section-title">📊 Painel de Cálculo</div>', unsafe_allow_html=True)
 col_c1, col_c2 = st.columns(2)
 with col_c1:
-    st.metric("Entrada Total", f"R$ {entrada_total:,.2f}")
-    st.metric("Entrada Cliente (C33)", f"R$ {valor_cliente:,.2f}")
-    st.metric("Valor mínimo", f"R$ {valor_minimo_entrada:,.2f}")
+    st.metric("Entrada Total", formatar_moeda(entrada_total))
+    st.metric("Entrada Cliente (C33)", formatar_moeda(valor_cliente))
+    st.metric("Valor mínimo", formatar_moeda(valor_minimo_entrada))
 
 with col_c2:
-    st.metric("Ato informado", f"R$ {ato:,.2f}")
-    st.metric("Restante para parcelar", f"R$ {restante:,.2f}")
+    st.metric("Ato informado", formatar_moeda(ato))
+    st.metric("Restante para parcelar", formatar_moeda(restante))
     st.metric("Quantidade de parcelas", f"{parcelas}")
 
 st.markdown("### 📅 Parcelamento da entrada")
@@ -1030,13 +1106,27 @@ if entrada_quitada:
 elif parcelas > 1:
     if usar_diferente:
         st.info(
-            f"{parcelas_iguais}x de R$ {valor_parcela_igual:,.2f} + "
-            f"1x de R$ {parcela_diferente:,.2f}"
+            f"{parcelas_iguais}x de {formatar_moeda(valor_parcela_igual)} + "
+            f"1x de {formatar_moeda(parcela_diferente)}"
         )
     else:
-        st.success(f"{parcelas}x de R$ {valor_parcela_igual:,.2f}")
+        st.success(f"{parcelas}x de {formatar_moeda(valor_parcela_igual)}")
 else:
     st.success("Pagamento em parcela única")
+st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="gp-card"><div class="gp-section-title">📑 Painel Contrato de Intermediação</div>', unsafe_allow_html=True)
+col_i1, col_i2, col_i3 = st.columns(3)
+with col_i1:
+    st.metric("5,30% do negócio (K23)", formatar_moeda(valor_total_comissao))
+    st.metric("Imobiliária (E26)", formatar_moeda(valor_imobiliaria))
+with col_i2:
+    st.metric("Corretor (E27)", formatar_moeda(valor_corretor))
+    st.metric("0,30% entrada mínima (E28)", formatar_moeda(valor_ato_minimo))
+with col_i3:
+    st.metric("Gerente (E29)", formatar_moeda(valor_gerente))
+    st.metric("Total distribuição (E30)", formatar_moeda(valor_total_distribuicao))
+st.markdown('</div>', unsafe_allow_html=True)
 
 if avisos_validacao:
     for aviso in avisos_validacao:
@@ -1046,11 +1136,9 @@ if erros_validacao:
     for erro in erros_validacao:
         st.error(f"❌ {erro}")
 
-st.markdown('</div>', unsafe_allow_html=True)
-
 proposta_pode_ser_gerada = len(erros_validacao) == 0
 
-if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_pode_ser_gerada):
+if st.button("Gerar Proposta + Contrato", use_container_width=True, disabled=not proposta_pode_ser_gerada):
     data_final_36_parcelas = adicionar_meses(data_parcelas, 36)
     idade_apos_36 = calcular_idade_em_data(data_nascimento, data_final_36_parcelas)
 
@@ -1060,6 +1148,7 @@ if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_p
     dados = {
         "nome": nome,
         "cpf": cpf,
+        "rg": rg,
         "telefone": telefone,
         "fixo": fixo,
         "nacionalidade": nacionalidade,
@@ -1070,6 +1159,7 @@ if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_p
         "email": email,
         "conjuge": conjuge,
         "cpf2": cpf2,
+        "rg2": rg2,
         "tel2": tel2,
         "fixo2": fixo2,
         "nac2": nac2,
@@ -1079,6 +1169,7 @@ if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_p
         "renda2": renda2,
         "proprietario": emp["proprietario"],
         "empreendimento": emp["nome"],
+        "empreendimento_contrato": emp.get("contrato_nome", emp["nome"]),
         "logradouro": emp["logradouro"],
         "unidade": unidade,
         "area": area,
@@ -1102,31 +1193,49 @@ if st.button("Gerar Proposta", use_container_width=True, disabled=not proposta_p
         "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
         "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
         "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else "",
+        "data_contrato_intermediacao": data_contrato_intermediacao.strftime("%d/%m/%Y") if data_contrato_intermediacao else "",
+        "nome_imobiliaria": profile_atual.get("nome_imobiliaria", ""),
+        "nome_corretor": profile_atual.get("nome", st.session_state["usuario_nome"]),
+        "nome_gerente": profile_atual.get("nome_gerente", ""),
+        "nome_diretor": profile_atual.get("nome_diretor", ""),
+        "porcentagem_imobiliaria": porcentagem_imobiliaria,
+        "porcentagem_corretor": porcentagem_corretor,
+        "porcentagem_gerente": porcentagem_gerente,
+        "valor_imobiliaria": valor_imobiliaria,
+        "valor_corretor": valor_corretor,
+        "valor_gerente": valor_gerente,
+        "valor_ato_minimo": valor_ato_minimo,
+        "valor_total_distribuicao": valor_total_distribuicao,
+        "valor_total_comissao": valor_total_comissao,
     }
 
-    excel = preencher_proposta(dados)
-    pdf = excel_para_pdf(excel)
+    excel_proposta = preencher_proposta(dados)
+    excel_contrato = preencher_contrato_intermediacao(dados)
 
-    st.success("✅ Proposta gerada com sucesso!")
+    pdf_proposta = excel_para_pdf(excel_proposta)
+    pdf_contrato = excel_para_pdf(excel_contrato)
 
-    col_download_1, col_download_2 = st.columns(2)
+    zip_excels = criar_zip_bytes([excel_proposta, excel_contrato])
+    zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
 
-    with col_download_1:
-        with open(pdf, "rb") as f_pdf:
-            st.download_button(
-                "📥 Baixar PDF",
-                f_pdf,
-                file_name=f"Proposta_{unidade}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
+    st.success("✅ Proposta e contrato gerados com sucesso!")
 
-    with col_download_2:
-        with open(excel, "rb") as f_excel:
-            st.download_button(
-                "📥 Baixar Excel",
-                f_excel,
-                file_name=f"Proposta_{unidade}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
+    col_down_1, col_down_2 = st.columns(2)
+
+    with col_down_1:
+        st.download_button(
+            "📥 Baixar 2 arquivos em Excel",
+            data=zip_excels,
+            file_name=f"Excels_{unidade}.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )
+
+    with col_down_2:
+        st.download_button(
+            "📥 Baixar 2 arquivos em PDF",
+            data=zip_pdfs,
+            file_name=f"PDFs_{unidade}.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )

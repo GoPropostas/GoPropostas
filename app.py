@@ -37,6 +37,21 @@ st.markdown("""
         background: linear-gradient(180deg, #062B36 0%, #073846 55%, #0A4C5B 100%);
     }
 
+    /* mais espaço no topo para não cortar a logo por causa da barra do Streamlit */
+    .block-container {
+        padding-top: 5rem !important;
+        padding-bottom: 2rem;
+        max-width: 1380px;
+    }
+
+    header[data-testid="stHeader"] {
+        background: rgba(0, 0, 0, 0.85);
+    }
+
+    [data-testid="stToolbar"] {
+        right: 1rem;
+    }
+
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #06232C 0%, #083845 100%);
         border-right: 1px solid rgba(255,255,255,0.08);
@@ -46,10 +61,9 @@ st.markdown("""
         color: #F4F7FA !important;
     }
 
-    .block-container {
-        padding-top: 1rem;
-        padding-bottom: 2rem;
-        max-width: 1380px;
+    .gp-topbar-wrap {
+        padding-top: 0.75rem;
+        margin-bottom: 1.25rem;
     }
 
     .gp-topbar {
@@ -57,24 +71,26 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         gap: 18px;
+        margin-top: 0;
         margin-bottom: 20px;
-        padding: 16px 22px;
+        padding: 18px 24px;
         border-radius: 24px;
         background: rgba(255,255,255,0.06);
         border: 1px solid rgba(255,255,255,0.08);
         backdrop-filter: blur(12px);
         box-shadow: 0 12px 32px rgba(0,0,0,0.18);
         overflow: visible;
-        min-height: 108px;
+        min-height: 116px;
     }
 
     .gp-topbar img {
-        max-height: 72px;
+        max-height: 78px;
         height: auto;
         width: auto;
         object-fit: contain;
         display: block;
         border-radius: 12px;
+        flex-shrink: 0;
     }
 
     .gp-title {
@@ -236,15 +252,34 @@ st.markdown("""
     label, .stMarkdown, .stCaption, p, span {
         color: inherit;
     }
+
+    @media (max-width: 900px) {
+        .block-container {
+            padding-top: 4.5rem !important;
+        }
+
+        .gp-topbar {
+            flex-direction: column;
+            text-align: center;
+            min-height: auto;
+            padding: 18px;
+        }
+
+        .gp-topbar img {
+            max-height: 70px;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown(f"""
-<div class="gp-topbar">
-    {"<img src='data:image/png;base64," + logo_base64 + "' style='max-height:72px;width:auto;object-fit:contain;'>" if logo_base64 else ""}
-    <div>
-        <div class="gp-title">GoPropostas</div>
-        <div class="gp-subtitle">Sistema corporativo de propostas imobiliárias</div>
+<div class="gp-topbar-wrap">
+    <div class="gp-topbar">
+        {"<img src='data:image/png;base64," + logo_base64 + "'>" if logo_base64 else ""}
+        <div>
+            <div class="gp-title">GoPropostas</div>
+            <div class="gp-subtitle">Sistema corporativo de propostas imobiliárias</div>
+        </div>
     </div>
 </div>
 """, unsafe_allow_html=True)

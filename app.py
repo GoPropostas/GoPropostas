@@ -718,7 +718,7 @@ empreendimentos = {
 
 # ---------------- UTILITÁRIOS ----------------
 @st.cache_data
-def carregar_tabela(arquivo):
+def carregar_tabela(arquivo, mod_time):
     df = pd.read_excel(arquivo, skiprows=11)
     df.columns = df.columns.str.strip().str.lower()
     return df
@@ -775,6 +775,14 @@ def criar_zip_bytes(arquivos: list[str]) -> bytes:
                 zf.write(arquivo, arcname=os.path.basename(arquivo))
     buffer.seek(0)
     return buffer.getvalue()
+
+def configurar_impressao(ws, orientation="portrait"):
+    ws.page_setup.orientation = orientation
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
+    ws.print_options.verticalCentered = False
 
 # ---------------- EXCEL PROPOSTA ----------------
 def preencher_proposta(d, modelo=MODELO_PROPOSTA):
@@ -874,6 +882,8 @@ def preencher_proposta(d, modelo=MODELO_PROPOSTA):
             ws["P35"] = ""
             ws["K35"] = ""
 
+    configurar_impressao(ws, "portrait")
+
     arquivo = "proposta.xlsx"
     wb.save(arquivo)
     return arquivo
@@ -911,6 +921,8 @@ def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
     ws["J50"] = d["nome_gerente"]
     ws["C54"] = d["nome_diretor"]
 
+    configurar_impressao(ws, "portrait")
+
     arquivo = "contrato_intermediacao.xlsx"
     wb.save(arquivo)
     return arquivo
@@ -923,7 +935,8 @@ st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendime
 emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
 emp = empreendimentos[emp_nome]
 
-df = carregar_tabela(emp["tabela"])
+mod_time = os.path.getmtime(emp["tabela"])
+df = carregar_tabela(emp["tabela"], mod_time)
 col = df.columns[0]
 unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote")
 linha = df[df[col] == unidade].iloc[0]

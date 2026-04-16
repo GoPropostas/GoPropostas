@@ -1,5 +1,6 @@
 streamlit
+supabase>=2.0.0
+requests
+httpx
 pandas
 openpyxl
-supabase
-requests
